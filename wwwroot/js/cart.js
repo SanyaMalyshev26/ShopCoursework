@@ -34,7 +34,7 @@ function renderCart() {
         row.innerHTML = `
             <td>
                 <div class="d-flex align-items-center gap-3">
-                    <img src="https://via.placeholder.com/60x60" alt="" width="60" height="60" class="rounded">
+                    <img src="https://placehold.co/60x60" alt="" width="60" height="60" class="rounded">
                     <span class="fw-semibold">${item.name}</span>
                 </div>
             </td>

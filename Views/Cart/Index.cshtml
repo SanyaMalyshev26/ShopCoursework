@@ -1,0 +1,63 @@
+@{
+    ViewData["Title"] = "Корзина";
+}
+
+<main class="container my-5">
+    <h2 class="mb-4">Корзина</h2>
+
+    <!-- Пустая корзина -->
+    <div id="emptyCart" class="text-center py-5 d-none">
+        <p class="fs-4">🛒 Ваша корзина пуста</p>
+        <a href="/" class="btn btn-primary">Перейти к покупкам</a>
+    </div>
+
+    <!-- Контент корзины -->
+    <div id="cartContent" class="row g-4">
+
+        <div class="col-lg-8">
+            <div class="table-responsive bg-white rounded shadow-sm p-3">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Товар</th>
+                            <th class="text-center" style="width:140px;">Кол-во</th>
+                            <th class="text-end" style="width:120px;">Цена</th>
+                            <th class="text-end" style="width:120px;">Сумма</th>
+                            <th style="width:50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartTableBody"></tbody>
+                </table>
+            </div>
+            <a href="/" class="btn btn-link px-0 mt-3">← Продолжить покупки</a>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="bg-white rounded shadow-sm p-4">
+                <h5 class="mb-3">Итого</h5>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Товаров</span>
+                    <span id="totalItems">0</span>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Сумма</span>
+                    <span id="subtotal">0 ₽</span>
+                </div>
+                <div class="d-flex justify-content-between mb-3">
+                    <span class="text-muted">Доставка</span>
+                    <span id="delivery">Бесплатно</span>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between fw-bold fs-5 mb-4">
+                    <span>К оплате</span>
+                    <span id="grandTotal">0 ₽</span>
+                </div>
+                <button class="btn btn-primary w-100 btn-lg" id="checkoutBtn">Оформить заказ</button>
+            </div>
+        </div>
+    </div>
+</main>
+
+@section Scripts {
+    <script src="~/js/cart.js" asp-append-version="true"></script>
+}
