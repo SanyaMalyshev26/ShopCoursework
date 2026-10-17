@@ -1,0 +1,20 @@
+.hero {
+    background: linear-gradient(135deg, #1e3c72, #2a5298);
+    min-height: 400px;
+    padding: 60px 0;
+}
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+}
+
+.product-card {
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.product-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+}
