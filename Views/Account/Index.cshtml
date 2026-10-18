@@ -1,15 +1,18 @@
+@model ShopCoursework.Models.ApplicationUser
 @{
     ViewData["Title"] = "Личный кабинет";
 }
 
 <main class="container my-5">
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-        <div>
-            <h2 class="mb-1">Личный кабинет</h2>
-            <p class="text-muted mb-0">Здравствуйте, <strong>Иван Иванов</strong>!</p>
-        </div>
-        <a href="#" class="btn btn-outline-danger">Выйти</a>
+    <div>
+        <h2 class="mb-1">Личный кабинет</h2>
+        <p class="text-muted mb-0">Здравствуйте, <strong>@Model.FirstName @Model.LastName</strong>!</p>
     </div>
+    <form method="post" asp-controller="Account" asp-action="Logout">
+        <button type="submit" class="btn btn-outline-danger">Выйти</button>
+    </form>
+</div>
 
     <ul class="nav nav-tabs" id="accountTabs" role="tablist">
         <li class="nav-item" role="presentation">
@@ -30,19 +33,19 @@
             <form id="profileForm" class="row g-3">
                 <div class="col-md-6">
                     <label class="form-label">Имя</label>
-                    <input type="text" class="form-control" name="firstName" value="Иван">
+                    <input type="text" class="form-control" name="firstName" value="@Model.FirstName">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Фамилия</label>
-                    <input type="text" class="form-control" name="lastName" value="Иванов">
+                    <input type="text" class="form-control" name="lastName" value="@Model.LastName">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Email</label>
-                    <input type="email" class="form-control" name="email" value="ivan@example.com">
+                    <input type="email" class="form-control" name="email" value="@Model.Email">
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Телефон</label>
-                    <input type="tel" class="form-control" name="phone" value="+7 (999) 123-45-67">
+                    <input type="tel" class="form-control" name="phone" value="@Model.PhoneNumber">
                 </div>
                 <div class="col-12">
                     <button type="submit" class="btn btn-primary">Сохранить изменения</button>

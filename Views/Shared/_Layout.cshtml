@@ -1,4 +1,9 @@
-﻿<!DOCTYPE html>
+﻿@using Microsoft.AspNetCore.Identity
+@inject SignInManager<ShopCoursework.Models.ApplicationUser> SignInManager
+
+
+
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="utf-8" />
@@ -27,7 +32,15 @@
                         🛒 Корзина
                         <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">0</span>
                     </a>
-                    <a href="/Account" class="btn btn-primary">Личный кабинет</a>
+                    @if (SignInManager.IsSignedIn(User))
+{
+    <a href="/Account" class="btn btn-primary">Личный кабинет</a>
+}
+else
+{
+    <a href="/Account/Login" class="btn btn-primary">Войти</a>
+    <a href="/Account/Register" class="btn btn-outline-light">Регистрация</a>
+}
                 </div>
             </div>
         </div>

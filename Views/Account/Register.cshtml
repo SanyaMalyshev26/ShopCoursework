@@ -1,0 +1,41 @@
+@model ShopCoursework.Models.RegisterViewModel
+@{
+    ViewData["Title"] = "Регистрация";
+}
+
+<main class="container my-5" style="max-width:480px;">
+    <h2 class="mb-4">Регистрация</h2>
+
+    <form method="post" asp-action="Register">
+        <div asp-validation-summary="ModelOnly" class="text-danger mb-2"></div>
+
+        <div class="mb-3">
+            <label class="form-label" asp-for="FirstName">Имя</label>
+            <input class="form-control" asp-for="FirstName">
+            <span class="text-danger" asp-validation-for="FirstName"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" asp-for="LastName">Фамилия</label>
+            <input class="form-control" asp-for="LastName">
+            <span class="text-danger" asp-validation-for="LastName"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" asp-for="Email">Email</label>
+            <input class="form-control" asp-for="Email">
+            <span class="text-danger" asp-validation-for="Email"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" asp-for="Password">Пароль</label>
+            <input class="form-control" asp-for="Password">
+            <span class="text-danger" asp-validation-for="Password"></span>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" asp-for="ConfirmPassword">Повторите пароль</label>
+            <input class="form-control" asp-for="ConfirmPassword">
+            <span class="text-danger" asp-validation-for="ConfirmPassword"></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">Зарегистрироваться</button>
+        <p class="mt-3 text-center">Уже есть аккаунт? <a asp-action="Login">Войти</a></p>
+    </form>
+</main>
