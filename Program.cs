@@ -1,11 +1,30 @@
 using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Data;
+using Microsoft.AspNetCore.Identity;
+using ShopCoursework.Models;
 
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite("Data Source=shop.db"));
+
+    builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+    {
+        // Упрощённые правила пароля для учебного проекта
+        options.Password.RequiredLength = 6;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequireLowercase = false;
+        options.Password.RequireDigit = false;
+    })
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders();
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.LoginPath = "/Account/Login";
+});
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
@@ -25,6 +44,7 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllerRoute(

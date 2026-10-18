@@ -1,9 +1,10 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Models;
 
 namespace ShopCoursework.Data;
 
-public class ApplicationDbContext : DbContext
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
@@ -14,9 +15,10 @@ public class ApplicationDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
+
         modelBuilder.Entity<Product>().Property(p => p.Price).HasPrecision(18, 2);
 
-        // Начальные данные: попадут в базу вместе с миграцией
         modelBuilder.Entity<Product>().HasData(
             new Product { Id = 1, Name = "Джинсы",   Price = 3500,  Rating = 3.9 },
             new Product { Id = 2, Name = "Куртка",   Price = 12900, Rating = 4.1 },
