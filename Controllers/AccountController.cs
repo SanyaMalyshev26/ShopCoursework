@@ -94,4 +94,46 @@ public class AccountController : Controller
         await _signInManager.SignOutAsync();
         return RedirectToAction("Index", "Home");
     }
+
+        [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> UpdateProfile(string firstName, string lastName, string phone)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        user.FirstName = firstName ?? "";
+        user.LastName = lastName ?? "";
+        user.PhoneNumber = phone;
+
+        await _userManager.UpdateAsync(user);
+        TempData["Message"] = "Данные профиля сохранены";
+        return RedirectToAction("Index");
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> ChangePassword(string currentPassword, string newPassword, string confirmPassword)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        if (newPassword != confirmPassword)
+        {
+            TempData["Error"] = "Пароли не совпадают";
+            return RedirectToAction("Index");
+        }
+
+        var result = await _userManager.ChangePasswordAsync(user, currentPassword, newPassword);
+        if (result.Succeeded)
+        {
+            await _signInManager.RefreshSignInAsync(user);
+            TempData["Message"] = "Пароль изменён";
+        }
+        else
+        {
+            TempData["Error"] = string.Join(" ", result.Errors.Select(e => e.Description));
+        }
+        return RedirectToAction("Index");
+    }
 }

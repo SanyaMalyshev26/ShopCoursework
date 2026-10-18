@@ -4,6 +4,14 @@
 }
 
 <main class="container my-5">
+        @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">@TempData["Error"]</div>
+    }
     <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <div>
         <h2 class="mb-1">Личный кабинет</h2>
@@ -30,7 +38,7 @@
 
         <!-- ПРОФИЛЬ -->
         <div class="tab-pane fade show active" id="profile" role="tabpanel">
-            <form id="profileForm" class="row g-3">
+            <form id="profileForm" class="row g-3" method="post" asp-action="UpdateProfile">
                 <div class="col-md-6">
                     <label class="form-label">Имя</label>
                     <input type="text" class="form-control" name="firstName" value="@Model.FirstName">
@@ -41,7 +49,7 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Email</label>
-                    <input type="email" class="form-control" name="email" value="@Model.Email">
+                    <input type="email" class="form-control" name="email" value="@Model.Email" readonly>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">Телефон</label>
@@ -55,7 +63,7 @@
             <hr class="my-4">
 
             <h5 class="mb-3">Смена пароля</h5>
-            <form id="passwordForm" class="row g-3">
+            <form id="passwordForm" class="row g-3" method="post" asp-action="ChangePassword">
                 <div class="col-md-4">
                     <label class="form-label">Текущий пароль</label>
                     <input type="password" class="form-control" name="currentPassword">

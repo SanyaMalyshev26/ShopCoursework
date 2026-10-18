@@ -33,22 +33,10 @@ updateCartBadge();
 
 
 
-// Профиль: фейковое сохранение (лк страница)
-const profileForm = document.getElementById('profileForm');
-if (profileForm) {
-    profileForm.addEventListener('submit', e => {
-        e.preventDefault();
-        alert('Данные профиля сохранены (пока без бэкенда)');
-    });
-}
 
-const passwordForm = document.getElementById('passwordForm');
-if (passwordForm) {
-    passwordForm.addEventListener('submit', e => {
-        e.preventDefault();
-        alert('Пароль изменён (пока без бэкенда)');
-    });
-}
+
+
+
 
 const addressForm = document.getElementById('addressForm');
 if (addressForm) {
