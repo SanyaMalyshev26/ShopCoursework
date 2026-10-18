@@ -1,0 +1,162 @@
+@{
+    ViewData["Title"] = "Личный кабинет";
+}
+
+<main class="container my-5">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h2 class="mb-1">Личный кабинет</h2>
+            <p class="text-muted mb-0">Здравствуйте, <strong>Иван Иванов</strong>!</p>
+        </div>
+        <a href="#" class="btn btn-outline-danger">Выйти</a>
+    </div>
+
+    <ul class="nav nav-tabs" id="accountTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile" type="button" role="tab">👤 Профиль</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders" type="button" role="tab">📦 Мои заказы</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="addresses-tab" data-bs-toggle="tab" data-bs-target="#addresses" type="button" role="tab">📍 Адреса доставки</button>
+        </li>
+    </ul>
+
+    <div class="tab-content bg-white p-4 border border-top-0 rounded-bottom shadow-sm" id="accountTabsContent">
+
+        <!-- ПРОФИЛЬ -->
+        <div class="tab-pane fade show active" id="profile" role="tabpanel">
+            <form id="profileForm" class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Имя</label>
+                    <input type="text" class="form-control" name="firstName" value="Иван">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Фамилия</label>
+                    <input type="text" class="form-control" name="lastName" value="Иванов">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-control" name="email" value="ivan@example.com">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Телефон</label>
+                    <input type="tel" class="form-control" name="phone" value="+7 (999) 123-45-67">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+                </div>
+            </form>
+
+            <hr class="my-4">
+
+            <h5 class="mb-3">Смена пароля</h5>
+            <form id="passwordForm" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Текущий пароль</label>
+                    <input type="password" class="form-control" name="currentPassword">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Новый пароль</label>
+                    <input type="password" class="form-control" name="newPassword">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Повторите новый</label>
+                    <input type="password" class="form-control" name="confirmPassword">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-outline-primary">Изменить пароль</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ЗАКАЗЫ -->
+        <div class="tab-pane fade" id="orders" role="tabpanel">
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>№ заказа</th>
+                            <th>Дата</th>
+                            <th>Сумма</th>
+                            <th>Статус</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>#1001</td>
+                            <td>12.10.2025</td>
+                            <td>5 980 ₽</td>
+                            <td><span class="badge bg-success">Доставлен</span></td>
+                            <td><a href="#" class="btn btn-sm btn-outline-secondary">Детали</a></td>
+                        </tr>
+                        <tr>
+                            <td>#1002</td>
+                            <td>15.10.2025</td>
+                            <td>2 990 ₽</td>
+                            <td><span class="badge bg-warning text-dark">В пути</span></td>
+                            <td><a href="#" class="btn btn-sm btn-outline-secondary">Детали</a></td>
+                        </tr>
+                        <tr>
+                            <td>#1003</td>
+                            <td>17.10.2025</td>
+                            <td>1 490 ₽</td>
+                            <td><span class="badge bg-secondary">Обрабатывается</span></td>
+                            <td><a href="#" class="btn btn-sm btn-outline-secondary">Детали</a></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- АДРЕСА -->
+        <div class="tab-pane fade" id="addresses" role="tabpanel">
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <div class="d-flex justify-content-between">
+                            <strong>Домашний</strong>
+                            <span class="badge bg-primary">По умолчанию</span>
+                        </div>
+                        <p class="mb-1 mt-2">г. Москва, ул. Ленина, д. 10, кв. 25</p>
+                        <small class="text-muted">Иван Иванов, +7 (999) 123-45-67</small>
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-secondary">Изменить</button>
+                            <button class="btn btn-sm btn-outline-danger">Удалить</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="border rounded p-3 h-100">
+                        <strong>Рабочий</strong>
+                        <p class="mb-1 mt-2">г. Москва, ул. Тверская, д. 5, офис 301</p>
+                        <small class="text-muted">Иван Иванов, +7 (999) 123-45-67</small>
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-secondary">Изменить</button>
+                            <button class="btn btn-sm btn-outline-danger">Удалить</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h6 class="mb-3">Добавить адрес</h6>
+            <form id="addressForm" class="row g-3">
+                <div class="col-md-6">
+                    <input type="text" class="form-control" placeholder="Название (например, Домашний)">
+                </div>
+                <div class="col-md-6">
+                    <input type="text" class="form-control" placeholder="Город">
+                </div>
+                <div class="col-12">
+                    <input type="text" class="form-control" placeholder="Улица, дом, квартира">
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Добавить</button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+</main>
