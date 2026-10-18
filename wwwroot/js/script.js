@@ -38,13 +38,7 @@ updateCartBadge();
 
 
 
-const addressForm = document.getElementById('addressForm');
-if (addressForm) {
-    addressForm.addEventListener('submit', e => {
-        e.preventDefault();
-        alert('Адрес добавлен (пока без бэкенда)');
-    });
-}
+
 
 if (document.querySelector('.badge')) {
     updateCartBadge();

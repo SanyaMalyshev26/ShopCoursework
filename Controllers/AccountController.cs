@@ -1,17 +1,15 @@
-using Microsoft.EntityFrameworkCore;
-using ShopCoursework.Data;
-
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ShopCoursework.Data;
 using ShopCoursework.Models;
 
 namespace ShopCoursework.Controllers;
 
 public class AccountController : Controller
 {
-        private readonly UserManager<ApplicationUser> _userManager;
+    private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly ApplicationDbContext _db;
 
@@ -33,8 +31,14 @@ public class AccountController : Controller
             .Where(o => o.UserId == user!.Id)
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
+        ViewBag.Addresses = await _db.Addresses
+            .Where(a => a.UserId == user!.Id)
+            .OrderByDescending(a => a.IsDefault)
+            .ThenBy(a => a.Id)
+            .ToListAsync();
         return View(user);
     }
+
     [HttpGet]
     public IActionResult Register() => View();
 
@@ -95,7 +99,7 @@ public class AccountController : Controller
         return RedirectToAction("Index", "Home");
     }
 
-        [Authorize]
+    [Authorize]
     [HttpPost]
     public async Task<IActionResult> UpdateProfile(string firstName, string lastName, string phone)
     {
@@ -133,6 +137,70 @@ public class AccountController : Controller
         else
         {
             TempData["Error"] = string.Join(" ", result.Errors.Select(e => e.Description));
+        }
+        return RedirectToAction("Index");
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> AddAddress(string title, string city, string street)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(city) || string.IsNullOrWhiteSpace(street))
+        {
+            TempData["Error"] = "Укажите город и улицу";
+            return RedirectToAction("Index");
+        }
+
+        var hasAny = await _db.Addresses.AnyAsync(a => a.UserId == user.Id);
+
+        _db.Addresses.Add(new Address
+        {
+            UserId = user.Id,
+            Title = string.IsNullOrWhiteSpace(title) ? "Адрес" : title.Trim(),
+            City = city.Trim(),
+            Street = street.Trim(),
+            IsDefault = !hasAny
+        });
+        await _db.SaveChangesAsync();
+
+        TempData["Message"] = "Адрес добавлен";
+        return RedirectToAction("Index");
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> DeleteAddress(int id)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized();
+
+        var address = await _db.Addresses
+            .FirstOrDefaultAsync(a => a.Id == id && a.UserId == user.Id);
+
+        if (address != null)
+        {
+            var wasDefault = address.IsDefault;
+            _db.Addresses.Remove(address);
+            await _db.SaveChangesAsync();
+
+            if (wasDefault)
+            {
+                var next = await _db.Addresses
+                    .Where(a => a.UserId == user.Id)
+                    .OrderBy(a => a.Id)
+                    .FirstOrDefaultAsync();
+
+                if (next != null)
+                {
+                    next.IsDefault = true;
+                    await _db.SaveChangesAsync();
+                }
+            }
+
+            TempData["Message"] = "Адрес удалён";
         }
         return RedirectToAction("Index");
     }
