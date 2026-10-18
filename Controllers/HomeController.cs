@@ -1,21 +1,23 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using ShopCoursework.Data;
 using ShopCoursework.Models;
 
 namespace ShopCoursework.Controllers;
 
 public class HomeController : Controller
 {
-    public IActionResult Index()
+    private readonly ApplicationDbContext _db;
+
+    public HomeController(ApplicationDbContext db)
     {
-        // Временные данные. Позже будут браться из базы через DbContext.
-        var products = new List<Product>
-        {
-            new() { Id = 1, Name = "Джинсы",   Price = 3500,  Rating = 3.9 },
-            new() { Id = 2, Name = "Куртка",   Price = 12900, Rating = 4.1 },
-            new() { Id = 3, Name = "Футболка", Price = 1100,  Rating = 4.9 },
-            new() { Id = 4, Name = "Свитер",   Price = 2990,  Rating = 4.75 },
-        };
+        _db = db;
+    }
+
+    public async Task<IActionResult> Index()
+    {
+        var products = await _db.Products.ToListAsync();
         return View(products);
     }
 

@@ -1,4 +1,11 @@
+using Microsoft.EntityFrameworkCore;
+using ShopCoursework.Data;
+
+
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlite("Data Source=shop.db"));
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
