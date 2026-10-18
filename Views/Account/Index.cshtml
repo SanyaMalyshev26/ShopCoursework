@@ -88,27 +88,16 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td>#1001</td>
-                            <td>12.10.2025</td>
-                            <td>5 980 ₽</td>
-                            <td><span class="badge bg-success">Доставлен</span></td>
-                            <td><a href="#" class="btn btn-sm btn-outline-secondary">Детали</a></td>
-                        </tr>
-                        <tr>
-                            <td>#1002</td>
-                            <td>15.10.2025</td>
-                            <td>2 990 ₽</td>
-                            <td><span class="badge bg-warning text-dark">В пути</span></td>
-                            <td><a href="#" class="btn btn-sm btn-outline-secondary">Детали</a></td>
-                        </tr>
-                        <tr>
-                            <td>#1003</td>
-                            <td>17.10.2025</td>
-                            <td>1 490 ₽</td>
-                            <td><span class="badge bg-secondary">Обрабатывается</span></td>
-                            <td><a href="#" class="btn btn-sm btn-outline-secondary">Детали</a></td>
-                        </tr>
+                        @foreach (var o in (List<ShopCoursework.Models.Order>)ViewBag.Orders)
+{
+    <tr>
+        <td>#@o.Id</td>
+        <td>@o.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
+        <td>@o.Total.ToString("N0", new System.Globalization.CultureInfo("ru-RU")) ₽</td>
+        <td><span class="badge bg-secondary">@o.Status</span></td>
+        <td></td>
+    </tr>
+}
                     </tbody>
                 </table>
             </div>

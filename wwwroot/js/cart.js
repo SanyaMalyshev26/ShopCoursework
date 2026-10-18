@@ -104,13 +104,28 @@ function updateTotals() {
 }
 
 // Оформление заказа
-document.getElementById('checkoutBtn').addEventListener('click', () => {
+document.getElementById('checkoutBtn').addEventListener('click', async () => {
     if (cart.length === 0) return;
 
-    // пока без бэкенда
-    alert('Заказ оформлен! (пока без бэкенда)\n\nПозже здесь будет запрос к C#: POST /Orders/Create');
+    const lines = cart.map(i => ({ id: parseInt(i.id), qty: i.qty }));
 
-    // очищаем корзину
+    const response = await fetch('/Orders/Create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lines)
+    });
+
+    if (response.status === 401) {
+        window.location.href = '/Account/Login?returnUrl=/Cart';
+        return;
+    }
+    if (!response.ok) {
+        alert('Не удалось оформить заказ');
+        return;
+    }
+
+    const result = await response.json();
+    alert('Заказ #' + result.orderId + ' оформлен!');
     cart = [];
     saveCart();
     renderCart();

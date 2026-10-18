@@ -1,3 +1,7 @@
+using Microsoft.EntityFrameworkCore;
+using ShopCoursework.Data;
+
+
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -7,14 +11,17 @@ namespace ShopCoursework.Controllers;
 
 public class AccountController : Controller
 {
-    private readonly UserManager<ApplicationUser> _userManager;
+        private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly ApplicationDbContext _db;
 
     public AccountController(UserManager<ApplicationUser> userManager,
-                             SignInManager<ApplicationUser> signInManager)
+                             SignInManager<ApplicationUser> signInManager,
+                             ApplicationDbContext db)
     {
         _userManager = userManager;
         _signInManager = signInManager;
+        _db = db;
     }
 
     // Личный кабинет: только для вошедших
@@ -22,9 +29,12 @@ public class AccountController : Controller
     public async Task<IActionResult> Index()
     {
         var user = await _userManager.GetUserAsync(User);
+        ViewBag.Orders = await _db.Orders
+            .Where(o => o.UserId == user!.Id)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync();
         return View(user);
     }
-
     [HttpGet]
     public IActionResult Register() => View();
 
