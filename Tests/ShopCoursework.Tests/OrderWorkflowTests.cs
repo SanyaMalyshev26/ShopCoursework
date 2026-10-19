@@ -290,6 +290,41 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Account_rejects_oversized_profile_and_address_fields()
+    {
+        var invalidProfile = await PostFormAsync("/Account/UpdateProfile", new Dictionary<string, string>
+        {
+            ["firstName"] = new string('F', 101),
+            ["lastName"] = "Tester",
+            ["phone"] = new string('1', 33)
+        });
+        Assert.Equal(HttpStatusCode.OK, invalidProfile.StatusCode);
+
+        var invalidAddress = await PostFormAsync("/Account/AddAddress", new Dictionary<string, string>
+        {
+            ["title"] = new string('T', 81),
+            ["city"] = "Москва",
+            ["street"] = "Тестовая, 1"
+        });
+        Assert.Equal(HttpStatusCode.OK, invalidAddress.StatusCode);
+
+        var invalidPassword = await PostFormAsync("/Account/ChangePassword", new Dictionary<string, string>
+        {
+            ["currentPassword"] = "anything",
+            ["newPassword"] = "short",
+            ["confirmPassword"] = "short"
+        });
+        Assert.Equal(HttpStatusCode.OK, invalidPassword.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var user = await db.Users.SingleAsync(item => item.Id == TestUserId);
+        Assert.Equal("Workflow", user.FirstName);
+        Assert.Equal("Tester", user.LastName);
+        Assert.Equal(1, await db.Addresses.CountAsync(item => item.UserId == TestUserId));
+    }
+
+    [Fact]
     public async Task Customer_can_cancel_own_new_order_and_stock_is_restored_once()
     {
         var variantId = await CreateVariantAsync(stock: 4);
