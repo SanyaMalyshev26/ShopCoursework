@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
+using ShopCoursework.Services.Images;
 using Xunit;
 
 namespace ShopCoursework.Tests;
@@ -101,6 +103,66 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(
             """{"status":"ok"}""",
             await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Admin_image_upload_returns_processed_image_urls()
+    {
+        using var content = new MultipartFormDataContent();
+        var image = new ByteArrayContent([1, 2, 3]);
+        image.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        content.Add(image, "image", "product.png");
+        content.Add(new StringContent(_antiforgeryToken), "__RequestVerificationToken");
+
+        var response = await _client.PostAsync("/Admin/Products/Images", content);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("/uploads/test-image.webp", json.RootElement.GetProperty("imageUrl").GetString());
+        Assert.Equal("/uploads/test-image_thumb.webp", json.RootElement.GetProperty("thumbnailUrl").GetString());
+        Assert.Equal(640, json.RootElement.GetProperty("width").GetInt32());
+    }
+
+    [Fact]
+    public async Task Admin_image_upload_rejects_unsupported_content_types()
+    {
+        using var content = new MultipartFormDataContent();
+        var image = new ByteArrayContent([1, 2, 3]);
+        image.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/svg+xml");
+        content.Add(image, "image", "product.svg");
+        content.Add(new StringContent(_antiforgeryToken), "__RequestVerificationToken");
+
+        var response = await _client.PostAsync("/Admin/Products/Images", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var client = _factory.Services.GetRequiredService<IImageProcessingClient>() as TestImageProcessingClient;
+        Assert.NotNull(client);
+        Assert.Equal(0, client.Calls);
+    }
+
+    [Fact]
+    public async Task Image_processing_client_posts_multipart_and_parses_service_response()
+    {
+        using var handler = new ImageProcessingResponseHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://image-processor:8000/")
+        };
+        var imageClient = new ImageProcessingClient(httpClient);
+        await using var imageStream = new MemoryStream([1, 2, 3]);
+        var image = new FormFile(imageStream, 0, imageStream.Length, "image", "product.png")
+        {
+            Headers = new HeaderDictionary { ["Content-Type"] = "image/png" }
+        };
+
+        var result = await imageClient.ProcessAsync(image, CancellationToken.None);
+
+        Assert.Equal("/uploads/processed.webp", result.ImageUrl);
+        Assert.Equal("/uploads/processed_thumb.webp", result.ThumbnailUrl);
+        Assert.Equal(HttpMethod.Post, handler.Method);
+        Assert.Equal(new Uri("http://image-processor:8000/images"), handler.RequestUri);
+        Assert.Contains("name=image", handler.RequestBody);
+        Assert.Contains("Content-Type: image/png", handler.RequestBody);
     }
 
     [Fact]
@@ -639,6 +701,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
 
             builder.ConfigureTestServices(services =>
             {
+                services.AddSingleton<IImageProcessingClient, TestImageProcessingClient>();
                 services.AddAuthentication(options =>
                     {
                         options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
@@ -649,6 +712,44 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
                         TestAuthenticationHandler.SchemeName,
                         _ => { });
             });
+        }
+    }
+
+    private sealed class TestImageProcessingClient : IImageProcessingClient
+    {
+        public int Calls { get; private set; }
+
+        public Task<ProcessedImage> ProcessAsync(IFormFile image, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(new ProcessedImage(
+                "/uploads/test-image.webp",
+                "/uploads/test-image_thumb.webp",
+                640,
+                480));
+        }
+    }
+
+    private sealed class ImageProcessingResponseHandler : HttpMessageHandler
+    {
+        public HttpMethod? Method { get; private set; }
+        public Uri? RequestUri { get; private set; }
+        public string RequestBody { get; private set; } = "";
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Method = request.Method;
+            RequestUri = request.RequestUri;
+            RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"imageUrl":"/uploads/processed.webp","thumbnailUrl":"/uploads/processed_thumb.webp","width":800,"height":600}""",
+                    Encoding.UTF8,
+                    "application/json")
+            };
         }
     }
 

@@ -1,9 +1,11 @@
+using System.Net;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
+using ShopCoursework.Services.Images;
 
 namespace ShopCoursework.Controllers;
 
@@ -12,10 +14,17 @@ namespace ShopCoursework.Controllers;
 public class ProductsAdminController : Controller
 {
     private readonly ApplicationDbContext _db;
+    private readonly IImageProcessingClient _imageProcessingClient;
+    private readonly ILogger<ProductsAdminController> _logger;
 
-    public ProductsAdminController(ApplicationDbContext db)
+    public ProductsAdminController(
+        ApplicationDbContext db,
+        IImageProcessingClient imageProcessingClient,
+        ILogger<ProductsAdminController> logger)
     {
         _db = db;
+        _imageProcessingClient = imageProcessingClient;
+        _logger = logger;
     }
 
     // Список товаров
@@ -27,6 +36,60 @@ public class ProductsAdminController : Controller
             .OrderBy(product => product.Id)
             .ToListAsync();
         return View(products);
+    }
+
+    [HttpPost("Images")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(10 * 1024 * 1024 + 64 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 10 * 1024 * 1024 + 64 * 1024)]
+    public async Task<IActionResult> UploadImage(
+        [FromForm(Name = "image")] IFormFile? image,
+        CancellationToken cancellationToken)
+    {
+        const long maxImageBytes = 10 * 1024 * 1024;
+        if (image == null || image.Length == 0 || image.Length > maxImageBytes)
+            return BadRequest(new { message = "Выберите изображение размером не более 10 МБ." });
+
+        if (image.ContentType is not ("image/jpeg" or "image/png" or "image/webp"))
+            return BadRequest(new { message = "Поддерживаются только JPEG, PNG и WebP." });
+
+        try
+        {
+            var processed = await _imageProcessingClient.ProcessAsync(image, cancellationToken);
+            return Ok(processed);
+        }
+        catch (ImageProcessingException exception) when (
+            exception.StatusCode is HttpStatusCode.BadRequest or
+                HttpStatusCode.RequestEntityTooLarge or
+                HttpStatusCode.UnsupportedMediaType or
+                HttpStatusCode.UnprocessableEntity)
+        {
+            return BadRequest(new { message = "Файл не является корректным поддерживаемым изображением." });
+        }
+        catch (ImageProcessingException exception)
+        {
+            _logger.LogError(exception, "Image processing service returned an invalid response.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "Сервис обработки изображений временно недоступен."
+            });
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Image processing service could not be reached.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "Сервис обработки изображений временно недоступен."
+            });
+        }
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(exception, "Image processing service request timed out.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "Сервис обработки изображений не ответил вовремя."
+            });
+        }
     }
 
     // Форма добавления

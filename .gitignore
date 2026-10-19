@@ -490,3 +490,9 @@ shop.db*
 .env
 .env.*
 !.env.example
+
+# Python image processor
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/

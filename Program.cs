@@ -3,6 +3,7 @@ using ShopCoursework.Data;
 using Microsoft.AspNetCore.Identity;
 using ShopCoursework.Models;
 using ShopCoursework.Services;
+using ShopCoursework.Services.Images;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +11,17 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=shop.db"));
 builder.Services.AddScoped<OrderCancellationService>();
+builder.Services.AddHttpClient<IImageProcessingClient, ImageProcessingClient>((services, client) =>
+{
+    var baseUrl = services.GetRequiredService<IConfiguration>()["ImageProcessing:BaseUrl"];
+    if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var imageServiceUri) &&
+        (imageServiceUri.Scheme == Uri.UriSchemeHttp || imageServiceUri.Scheme == Uri.UriSchemeHttps))
+    {
+        client.BaseAddress = imageServiceUri;
+    }
+
+    client.Timeout = TimeSpan.FromSeconds(45);
+});
 
     builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {

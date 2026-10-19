@@ -1,4 +1,23 @@
 services:
+  image-processor:
+    build:
+      context: ./image-processor
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    volumes:
+      - shop_uploads:/uploads
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
   shop:
     build:
       context: .
@@ -12,6 +31,7 @@ services:
       ASPNETCORE_HTTP_PORTS: "8080"
       ConnectionStrings__DefaultConnection: "Data Source=/app/data/shop.db"
       Database__ApplyMigrationsOnStartup: "true"
+      ImageProcessing__BaseUrl: "http://image-processor:8000/"
       AdminEmail: "${ADMIN_EMAIL:-}"
       Store__Name: "${STORE_NAME:-ShopCoursework}"
       Store__CurrencyCode: "${STORE_CURRENCY_CODE:-RUB}"
@@ -20,6 +40,9 @@ services:
       - shop_data:/app/data
       - shop_uploads:/app/wwwroot/uploads
       - shop_keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      image-processor:
+        condition: service_healthy
 
 volumes:
   shop_data:
