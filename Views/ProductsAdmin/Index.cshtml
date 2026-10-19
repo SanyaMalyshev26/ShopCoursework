@@ -1,0 +1,55 @@
+@model List<ShopCoursework.Models.Product>
+@{
+    ViewData["Title"] = "Админка: товары";
+    var ru = new System.Globalization.CultureInfo("ru-RU");
+}
+
+<main class="container my-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">Товары</h2>
+        <a href="/Admin/Products/Create" class="btn btn-primary">+ Добавить товар</a>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">@TempData["Error"]</div>
+    }
+
+    <div class="table-responsive bg-white rounded shadow-sm p-3">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th style="width:70px;"></th>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Цена</th>
+                    <th>Рейтинг</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Model)
+                {
+                    <tr>
+                        <td><img src="@p.ImageUrl" alt="" width="50" height="50" class="rounded" style="object-fit:cover"></td>
+                        <td>@p.Id</td>
+                        <td>@p.Name</td>
+                        <td>@p.Price.ToString("N0", ru) ₽</td>
+                        <td>@p.Rating.ToString("0.##", ru) ★</td>
+                        <td class="text-end">
+                            <a href="/Admin/Products/Edit/@p.Id" class="btn btn-sm btn-outline-secondary">Изменить</a>
+                            <form method="post" action="/Admin/Products/Delete/@p.Id" class="d-inline"
+                                  onsubmit="return confirm('Удалить товар «@p.Name»?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</main>

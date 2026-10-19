@@ -44,11 +44,7 @@ using (var scope = app.Services.CreateScope())
     {
         var admin = await userManager.FindByEmailAsync(adminEmail);
 
-                if (admin != null)
-        {
-            var resetToken = await userManager.GeneratePasswordResetTokenAsync(admin);
-            await userManager.ResetPasswordAsync(admin, resetToken, "Admin12345");
-        }
+                
         if (admin != null && !await userManager.IsInRoleAsync(admin, "Admin"))
             await userManager.AddToRoleAsync(admin, "Admin");
     }
