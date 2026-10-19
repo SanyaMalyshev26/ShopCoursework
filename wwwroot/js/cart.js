@@ -4,6 +4,12 @@ cart = JSON.parse(localStorage.getItem('cart') || '[]');
 const tbody = document.getElementById('cartTableBody');
 const emptyBlock = document.getElementById('emptyCart');
 const contentBlock = document.getElementById('cartContent');
+const currencyContainer = document.querySelector('[data-currency-code]');
+const currencyFormatter = new Intl.NumberFormat(currencyContainer.dataset.currencyCulture, {
+    style: 'currency',
+    currency: currencyContainer.dataset.currencyCode,
+    maximumFractionDigits: 0
+});
 
 // Сохранение и обновление счётчика в шапке
 function saveCart() {
@@ -13,7 +19,7 @@ function saveCart() {
 
 // Форматирование цены
 function formatPrice(value) {
-    return value.toLocaleString('ru-RU') + ' ₽';
+    return currencyFormatter.format(value);
 }
 
 // Рендер всей корзины

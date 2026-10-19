@@ -1,7 +1,8 @@
 @model List<ShopCoursework.Models.Product>
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "Админка: товары";
-    var ru = new System.Globalization.CultureInfo("ru-RU");
+    var currencyCulture = System.Globalization.CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
 }
 
 <main class="container my-5">
@@ -38,8 +39,8 @@
                         <td><img src="@p.ImageUrl" alt="" width="50" height="50" class="rounded" style="object-fit:cover"></td>
                         <td>@p.Id</td>
                         <td>@p.Name</td>
-                        <td>@p.Price.ToString("N0", ru) ₽</td>
-                        <td>@p.Rating.ToString("0.##", ru) ★</td>
+                        <td>@p.Price.ToString("C0", currencyCulture)</td>
+                        <td>@p.Rating.ToString("0.##", currencyCulture) ★</td>
                         <td class="text-end">
                             <a href="/Admin/Products/Edit/@p.Id" class="btn btn-sm btn-outline-secondary">Изменить</a>
                             <form method="post" action="/Admin/Products/Delete/@p.Id" asp-antiforgery="true" class="d-inline"

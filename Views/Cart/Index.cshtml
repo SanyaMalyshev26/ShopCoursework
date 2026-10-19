@@ -1,8 +1,11 @@
+﻿@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "Корзина";
+    var currencyCode = Configuration["Store:CurrencyCode"] ?? "RUB";
+    var currencyCulture = System.Globalization.CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
 }
 
-<main class="container my-5">
+<main class="container my-5" data-currency-code="@currencyCode" data-currency-culture="@currencyCulture.Name">
     @Html.AntiForgeryToken()
     <h2 class="mb-4">Корзина</h2>
 
@@ -42,7 +45,7 @@
                 </div>
                 <div class="d-flex justify-content-between mb-2">
                     <span class="text-muted">Сумма</span>
-                    <span id="subtotal">0 ₽</span>
+                    <span id="subtotal">@(0m.ToString("C0", currencyCulture))</span>
                 </div>
                 <div class="d-flex justify-content-between mb-3">
                     <span class="text-muted">Доставка</span>
@@ -51,7 +54,7 @@
                 <hr>
                 <div class="d-flex justify-content-between fw-bold fs-5 mb-4">
                     <span>К оплате</span>
-                    <span id="grandTotal">0 ₽</span>
+                    <span id="grandTotal">@(0m.ToString("C0", currencyCulture))</span>
                 </div>
                 <button class="btn btn-primary w-100 btn-lg" id="checkoutBtn">Оформить заказ</button>
             </div>

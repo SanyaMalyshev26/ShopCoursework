@@ -1,6 +1,8 @@
 @model ShopCoursework.Models.ApplicationUser
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "Личный кабинет";
+    var currencyCulture = System.Globalization.CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
 }
 
 <main class="container my-5">
@@ -101,7 +103,7 @@
     <tr>
         <td>#@o.Id</td>
         <td>@o.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
-        <td>@o.Total.ToString("N0", new System.Globalization.CultureInfo("ru-RU")) ₽</td>
+        <td>@o.Total.ToString("C0", currencyCulture)</td>
         <td><span class="badge bg-secondary">@o.Status</span></td>
         <td></td>
     </tr>

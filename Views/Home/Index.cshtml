@@ -1,8 +1,9 @@
 ﻿@using System.Globalization
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @model List<ShopCoursework.Models.Product>
 @{
     ViewData["Title"] = "Главная";
-    var ru = new CultureInfo("ru-RU");
+    var currencyCulture = CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
 }
 
 <section class="hero text-center text-white d-flex align-items-center">
@@ -24,8 +25,8 @@
                     <img src="@p.ImageUrl" class="card-img-top" alt="@p.Name">
                     <div class="card-body d-flex flex-column">
                         <h5 class="card-title">@p.Name</h5>
-                        <p class="card-text text-muted small">@p.Rating.ToString("0.##", ru) ★</p>
-                        <p class="fw-bold fs-5 mt-auto mb-2">@p.Price.ToString("N0", ru) ₽</p>
+                        <p class="card-text text-muted small">@p.Rating.ToString("0.##", currencyCulture) ★</p>
+                        <p class="fw-bold fs-5 mt-auto mb-2">@p.Price.ToString("C0", currencyCulture)</p>
                         <button class="btn btn-primary w-100 add-to-cart"
                                 data-id="@p.Id"
                                 data-name="@p.Name"
