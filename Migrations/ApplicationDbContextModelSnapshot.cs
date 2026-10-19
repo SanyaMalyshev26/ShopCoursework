@@ -256,6 +256,10 @@ namespace ShopCoursework.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ShippingAddressTitle")
                         .HasColumnType("TEXT");
 

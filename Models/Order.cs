@@ -7,6 +7,7 @@ public class Order
     public ApplicationUser? User { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string Status { get; set; } = OrderStatuses.New;
+    public string PaymentMethod { get; set; } = PaymentMethods.CashOnDelivery;
     public decimal Total { get; set; }
     public string? ShippingAddressTitle { get; set; }
     public string? ShippingCity { get; set; }

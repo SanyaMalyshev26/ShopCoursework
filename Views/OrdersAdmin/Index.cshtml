@@ -79,7 +79,10 @@
                                     </div>
                                 }
                             </td>
-                            <td class="text-nowrap">@order.Total.ToString("C0", currencyCulture)</td>
+                            <td class="text-nowrap">
+                                @order.Total.ToString("C0", currencyCulture)
+                                <div class="small text-muted">@order.PaymentMethod</div>
+                            </td>
                             <td><span class="badge bg-secondary">@order.Status</span></td>
                             <td>
                                 <div class="d-flex flex-wrap gap-2">

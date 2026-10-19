@@ -91,6 +91,7 @@ public class OrdersController : Controller
         var order = new Order
         {
             UserId = User.FindFirstValue(ClaimTypes.NameIdentifier)!,
+            PaymentMethod = PaymentMethods.CashOnDelivery,
             ShippingAddressTitle = address.Title,
             ShippingCity = address.City,
             ShippingStreet = address.Street

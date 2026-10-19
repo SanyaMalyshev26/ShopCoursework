@@ -89,6 +89,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Contains("Дом", html);
         Assert.Contains("Москва", html);
         Assert.Contains("Тестовая, 1", html);
+        Assert.Contains(PaymentMethods.CashOnDelivery, html);
     }
 
     [Fact]
@@ -110,6 +111,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
 
         Assert.Equal(2, variant.Stock);
         Assert.Equal(OrderStatuses.New, order.Status);
+        Assert.Equal(PaymentMethods.CashOnDelivery, order.PaymentMethod);
         Assert.Equal("Дом", order.ShippingAddressTitle);
         Assert.Equal("Москва", order.ShippingCity);
         Assert.Equal("Тестовая, 1", order.ShippingStreet);
@@ -211,6 +213,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(OrderStatuses.Shipped, await GetOrderStatusAsync(orderId));
         var adminHtml = WebUtility.HtmlDecode(await _client.GetStringAsync("/Admin/Orders"));
         Assert.Contains("г. Москва, Тестовая, 1", adminHtml);
+        Assert.Contains(PaymentMethods.CashOnDelivery, adminHtml);
 
         var invalidCancel = await AdminPostAsync($"/Admin/Orders/{orderId}/Cancel");
         Assert.Equal(HttpStatusCode.OK, invalidCancel.StatusCode);

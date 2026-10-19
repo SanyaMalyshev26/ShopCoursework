@@ -126,7 +126,10 @@
         </td>
         <td>@o.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
         <td>@o.Total.ToString("C0", currencyCulture)</td>
-        <td><span class="badge bg-secondary">@o.Status</span></td>
+        <td>
+            <span class="badge bg-secondary">@o.Status</span>
+            <div class="small text-muted mt-1">@o.PaymentMethod</div>
+        </td>
         <td></td>
     </tr>
 }
