@@ -93,6 +93,17 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Readiness_endpoint_reports_database_availability()
+    {
+        var response = await _client.GetAsync("/health/ready");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(
+            """{"status":"ok"}""",
+            await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Checkout_decrements_stock_and_saves_order_snapshots()
     {
         var variantId = await CreateVariantAsync(stock: 4);
