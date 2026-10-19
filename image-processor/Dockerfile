@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && mkdir -p /uploads \
     && chown -R 1654:1654 /service /uploads
 
-COPY --chown=1654:1654 app.py .
+COPY --chown=1654:1654 app.py analytics.py .
 USER 1654:1654
 
 EXPOSE 8000

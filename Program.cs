@@ -3,6 +3,7 @@ using ShopCoursework.Data;
 using Microsoft.AspNetCore.Identity;
 using ShopCoursework.Models;
 using ShopCoursework.Services;
+using ShopCoursework.Services.Analytics;
 using ShopCoursework.Services.Images;
 
 
@@ -21,6 +22,17 @@ builder.Services.AddHttpClient<IImageProcessingClient, ImageProcessingClient>((s
     }
 
     client.Timeout = TimeSpan.FromSeconds(45);
+});
+builder.Services.AddHttpClient<IAnalyticsProcessingClient, AnalyticsProcessingClient>((services, client) =>
+{
+    var baseUrl = services.GetRequiredService<IConfiguration>()["AnalyticsProcessing:BaseUrl"];
+    if (Uri.TryCreate(baseUrl, UriKind.Absolute, out var analyticsServiceUri) &&
+        (analyticsServiceUri.Scheme == Uri.UriSchemeHttp || analyticsServiceUri.Scheme == Uri.UriSchemeHttps))
+    {
+        client.BaseAddress = analyticsServiceUri;
+    }
+
+    client.Timeout = TimeSpan.FromSeconds(10);
 });
 
     builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>

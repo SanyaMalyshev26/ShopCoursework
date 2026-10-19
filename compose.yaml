@@ -32,6 +32,7 @@ services:
       ConnectionStrings__DefaultConnection: "Data Source=/app/data/shop.db"
       Database__ApplyMigrationsOnStartup: "true"
       ImageProcessing__BaseUrl: "http://image-processor:8000/"
+      AnalyticsProcessing__BaseUrl: "http://image-processor:8000/"
       AdminEmail: "${ADMIN_EMAIL:-}"
       Store__Name: "${STORE_NAME:-ShopCoursework}"
       Store__CurrencyCode: "${STORE_CURRENCY_CODE:-RUB}"

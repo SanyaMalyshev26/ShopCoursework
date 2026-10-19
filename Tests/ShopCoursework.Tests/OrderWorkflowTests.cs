@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
+using ShopCoursework.Services.Analytics;
 using ShopCoursework.Services.Images;
 using Xunit;
 
@@ -199,8 +200,42 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         });
 
         var response = await nonAdminClient.GetAsync("/Admin/Analytics/Sales?from=2026-01-01&to=2026-01-01");
+        var insightsResponse = await nonAdminClient.GetAsync(
+            "/Admin/Analytics/Sales/Insights?from=2026-01-01&to=2026-01-01");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, insightsResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Sales_insights_sends_only_the_aggregated_report_to_python()
+    {
+        var variantId = await CreateVariantAsync(stock: 2);
+        var checkout = await CheckoutAsync(variantId, quantity: 1);
+        Assert.Equal(HttpStatusCode.OK, checkout.StatusCode);
+        var reportDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+
+        var response = await _client.GetAsync(
+            $"/Admin/Analytics/Sales/Insights?from={reportDate}&to={reportDate}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("RUB", json.RootElement.GetProperty("currencyCode").GetString());
+        Assert.Equal("up", json.RootElement.GetProperty("revenueTrend").GetString());
+        Assert.Equal("3500.00", json.RootElement.GetProperty("averageOrderValue").GetString());
+
+        var client = _factory.Services.GetRequiredService<IAnalyticsProcessingClient>()
+            as TestAnalyticsProcessingClient;
+        Assert.NotNull(client);
+        Assert.NotNull(client.LastReport);
+        Assert.Equal(1, client.LastReport.Summary.Orders);
+        Assert.Equal(3500m, client.LastReport.Summary.Revenue);
+        Assert.Equal(1, Assert.Single(client.LastReport.Daily).UnitsSold);
+        Assert.Equal("Джинсы", Assert.Single(client.LastReport.TopProducts).ProductName);
+        var serializedReport = JsonSerializer.Serialize(client.LastReport, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain("userId", serializedReport);
+        Assert.DoesNotContain("email", serializedReport);
+        Assert.DoesNotContain("shippingCity", serializedReport);
     }
 
     [Fact]
@@ -261,6 +296,37 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(new Uri("http://image-processor:8000/images"), handler.RequestUri);
         Assert.Contains("name=image", handler.RequestBody);
         Assert.Contains("Content-Type: image/png", handler.RequestBody);
+    }
+
+    [Fact]
+    public async Task Analytics_processing_client_posts_aggregates_and_parses_insights()
+    {
+        using var handler = new AnalyticsProcessingResponseHandler();
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://image-processor:8000/")
+        };
+        var analyticsClient = new AnalyticsProcessingClient(httpClient);
+        var report = new SalesReport(
+            "2026-10-19",
+            "2026-10-19",
+            "RUB",
+            new SalesSummary(1, 3500m, 0m, 1),
+            [new DailySales("2026-10-19", 1, 3500m, 1)],
+            [new TopProductSales(1, "Джинсы", 1, 3500m)]);
+
+        var result = await analyticsClient.AnalyzeSalesAsync(report, CancellationToken.None);
+
+        Assert.Equal("3500.00", result.AverageOrderValue);
+        Assert.Equal("insufficient_data", result.RevenueTrend);
+        Assert.Equal(HttpMethod.Post, handler.Method);
+        Assert.Equal(
+            new Uri("http://image-processor:8000/analytics/sales-insights"),
+            handler.RequestUri);
+        Assert.Contains("\"currencyCode\":\"RUB\"", handler.RequestBody);
+        Assert.Contains("\"from\":\"2026-10-19\"", handler.RequestBody);
+        Assert.DoesNotContain("userId", handler.RequestBody);
+        Assert.DoesNotContain("email", handler.RequestBody);
     }
 
     [Fact]
@@ -808,6 +874,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
             builder.ConfigureTestServices(services =>
             {
                 services.AddSingleton<IImageProcessingClient, TestImageProcessingClient>();
+                services.AddSingleton<IAnalyticsProcessingClient, TestAnalyticsProcessingClient>();
                 services.AddAuthentication(options =>
                     {
                         options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
@@ -836,6 +903,26 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         }
     }
 
+    private sealed class TestAnalyticsProcessingClient : IAnalyticsProcessingClient
+    {
+        public SalesReport? LastReport { get; private set; }
+
+        public Task<SalesInsights> AnalyzeSalesAsync(
+            SalesReport report,
+            CancellationToken cancellationToken)
+        {
+            LastReport = report;
+            return Task.FromResult(new SalesInsights(
+                report.CurrencyCode,
+                "3500.00",
+                "3500.00",
+                new BestSalesDay(report.From, "3500.00", 1, 1),
+                "100.0",
+                "up",
+                "100.0"));
+        }
+    }
+
     private sealed class ImageProcessingResponseHandler : HttpMessageHandler
     {
         public HttpMethod? Method { get; private set; }
@@ -853,6 +940,29 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
             {
                 Content = new StringContent(
                     """{"imageUrl":"/uploads/processed.webp","thumbnailUrl":"/uploads/processed_thumb.webp","width":800,"height":600}""",
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        }
+    }
+
+    private sealed class AnalyticsProcessingResponseHandler : HttpMessageHandler
+    {
+        public HttpMethod? Method { get; private set; }
+        public Uri? RequestUri { get; private set; }
+        public string RequestBody { get; private set; } = "";
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            Method = request.Method;
+            RequestUri = request.RequestUri;
+            RequestBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"currencyCode":"RUB","averageOrderValue":"3500.00","averageDailyRevenue":"3500.00","bestSalesDay":{"date":"2026-10-19","revenue":"3500.00","orders":1,"unitsSold":1},"revenueChangePercent":null,"revenueTrend":"insufficient_data","topProductsRevenueSharePercent":"100.0"}""",
                     Encoding.UTF8,
                     "application/json")
             };

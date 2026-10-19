@@ -11,6 +11,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel
 
+from analytics import SalesInsights, SalesReport, analyze_sales
+
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 25_000_000
 MAX_SOURCE_SIDE = 16_000
@@ -119,3 +121,8 @@ async def process_image(image: UploadFile = File(...)) -> ProcessedImage:
         )
     finally:
         await image.close()
+
+
+@app.post("/analytics/sales-insights")
+def sales_insights(report: SalesReport) -> SalesInsights:
+    return analyze_sales(report)
