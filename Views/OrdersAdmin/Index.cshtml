@@ -1,0 +1,106 @@
+@model List<ShopCoursework.Models.Order>
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@{
+    ViewData["Title"] = "Админка: заказы";
+    var currencyCulture = System.Globalization.CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
+}
+
+<main class="container my-5">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <h2 class="mb-0">Заказы</h2>
+        <a href="/Admin/Products" class="btn btn-outline-secondary">К товарам и остаткам</a>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-warning">@TempData["Error"]</div>
+    }
+
+    @if (Model.Count == 0)
+    {
+        <div class="alert alert-info">Заказов пока нет.</div>
+    }
+    else
+    {
+        <div class="table-responsive bg-white rounded shadow-sm p-3">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Заказ</th>
+                        <th>Покупатель</th>
+                        <th>Состав</th>
+                        <th>Сумма</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var order in Model)
+                    {
+                        <tr>
+                            <td>
+                                <strong>#@order.Id</strong>
+                                <br>
+                                <small class="text-muted">@order.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</small>
+                            </td>
+                            <td>
+                                @order.User?.FirstName @order.User?.LastName
+                                <br>
+                                <small class="text-muted">@order.User?.Email</small>
+                            </td>
+                            <td>
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var item in order.Items)
+                                    {
+                                        <li class="mb-1">
+                                            @(item.ProductName ?? item.Product?.Name ?? "Товар удалён")
+                                            @if (!string.IsNullOrEmpty(item.VariantSku))
+                                            {
+                                                <small class="text-muted">(@item.VariantSku)</small>
+                                            }
+                                            @if (!string.IsNullOrEmpty(item.VariantSize) ||
+                                                 !string.IsNullOrEmpty(item.VariantColor))
+                                            {
+                                                <small class="text-muted">— @item.VariantSize @item.VariantColor</small>
+                                            }
+                                            <span>× @item.Quantity · @((item.UnitPrice * item.Quantity).ToString("C0", currencyCulture))</span>
+                                        </li>
+                                    }
+                                </ul>
+                            </td>
+                            <td class="text-nowrap">@order.Total.ToString("C0", currencyCulture)</td>
+                            <td><span class="badge bg-secondary">@order.Status</span></td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @if (order.Status == OrderStatuses.New)
+                                    {
+                                        <form method="post" action="/Admin/Orders/@order.Id/Confirm" asp-antiforgery="true">
+                                            <button type="submit" class="btn btn-sm btn-outline-primary">Подтвердить</button>
+                                        </form>
+                                    }
+                                    @if (order.Status == OrderStatuses.Confirmed)
+                                    {
+                                        <form method="post" action="/Admin/Orders/@order.Id/Ship" asp-antiforgery="true">
+                                            <button type="submit" class="btn btn-sm btn-outline-success">Отправить</button>
+                                        </form>
+                                    }
+                                    @if (order.Status == OrderStatuses.New || order.Status == OrderStatuses.Confirmed)
+                                    {
+                                        <form method="post" action="/Admin/Orders/@order.Id/Cancel" asp-antiforgery="true"
+                                              onsubmit="return confirm('Отменить заказ #@order.Id и вернуть его остатки на склад?');">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Отменить</button>
+                                        </form>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</main>
