@@ -106,6 +106,104 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Admin_sales_report_aggregates_utc_period_and_excludes_cancelled_orders()
+    {
+        var variantId = await CreateVariantAsync(stock: 10);
+        var firstOrderId = await CreateOrderAsync(variantId, quantity: 2);
+        var lastOrderId = await CreateOrderAsync(variantId, quantity: 1);
+        var cancelledOrderId = await CreateOrderAsync(variantId, quantity: 1);
+        var previousOrderId = await CreateOrderAsync(variantId, quantity: 1);
+        var nextOrderId = await CreateOrderAsync(variantId, quantity: 1);
+        var reportDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-1);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var orders = await db.Orders
+                .Include(order => order.Items)
+                .Where(order => new[] { firstOrderId, lastOrderId, cancelledOrderId, previousOrderId, nextOrderId }
+                    .Contains(order.Id))
+                .ToDictionaryAsync(order => order.Id);
+
+            orders[firstOrderId].CreatedAt = reportDate.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            orders[lastOrderId].CreatedAt = reportDate.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
+            orders[lastOrderId].PaymentStatus = PaymentStatuses.Paid;
+            orders[cancelledOrderId].CreatedAt = reportDate.ToDateTime(new TimeOnly(12, 0), DateTimeKind.Utc);
+            orders[cancelledOrderId].Status = OrderStatuses.Cancelled;
+            orders[previousOrderId].CreatedAt = reportDate.AddDays(-1).ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
+            orders[nextOrderId].CreatedAt = reportDate.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+            orders[firstOrderId].Items.Single().ProductVariantId = null;
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync(
+            $"/Admin/Analytics/Sales?from={reportDate:yyyy-MM-dd}&to={reportDate:yyyy-MM-dd}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = json.RootElement;
+        var summary = root.GetProperty("summary");
+        Assert.Equal(reportDate.ToString("yyyy-MM-dd"), root.GetProperty("from").GetString());
+        Assert.Equal(reportDate.ToString("yyyy-MM-dd"), root.GetProperty("to").GetString());
+        Assert.Equal("RUB", root.GetProperty("currencyCode").GetString());
+        Assert.Equal(2, summary.GetProperty("orders").GetInt32());
+        Assert.Equal(10500m, summary.GetProperty("revenue").GetDecimal());
+        Assert.Equal(3500m, summary.GetProperty("paidRevenue").GetDecimal());
+        Assert.Equal(3, summary.GetProperty("unitsSold").GetInt32());
+
+        var daily = Assert.Single(root.GetProperty("daily").EnumerateArray());
+        Assert.Equal(reportDate.ToString("yyyy-MM-dd"), daily.GetProperty("date").GetString());
+        Assert.Equal(2, daily.GetProperty("orders").GetInt32());
+        Assert.Equal(10500m, daily.GetProperty("revenue").GetDecimal());
+        Assert.Equal(3, daily.GetProperty("unitsSold").GetInt32());
+
+        var topProduct = Assert.Single(root.GetProperty("topProducts").EnumerateArray());
+        Assert.Equal(1, topProduct.GetProperty("productId").GetInt32());
+        Assert.Equal("Джинсы", topProduct.GetProperty("productName").GetString());
+        Assert.Equal(3, topProduct.GetProperty("unitsSold").GetInt32());
+        Assert.Equal(10500m, topProduct.GetProperty("revenue").GetDecimal());
+        Assert.False(root.TryGetProperty("userId", out _));
+        Assert.False(root.TryGetProperty("email", out _));
+        Assert.False(root.TryGetProperty("shippingCity", out _));
+    }
+
+    [Fact]
+    public async Task Admin_sales_report_returns_empty_aggregates_and_validates_period()
+    {
+        var response = await _client.GetAsync("/Admin/Analytics/Sales?from=2000-01-01&to=2000-01-01");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var summary = json.RootElement.GetProperty("summary");
+        Assert.Equal(0, summary.GetProperty("orders").GetInt32());
+        Assert.Equal(0m, summary.GetProperty("revenue").GetDecimal());
+        Assert.Equal(0m, summary.GetProperty("paidRevenue").GetDecimal());
+        Assert.Equal(0, summary.GetProperty("unitsSold").GetInt32());
+        Assert.Empty(json.RootElement.GetProperty("daily").EnumerateArray());
+        Assert.Empty(json.RootElement.GetProperty("topProducts").EnumerateArray());
+
+        var invalid = await _client.GetAsync("/Admin/Analytics/Sales?from=2026-02-02&to=2026-02-01");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        var missing = await _client.GetAsync("/Admin/Analytics/Sales?from=2026-02-01");
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task Sales_report_requires_admin_role()
+    {
+        await using var nonAdminFactory = new TestApplicationFactory($"Data Source={_databasePath}", isAdmin: false);
+        using var nonAdminClient = nonAdminFactory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await nonAdminClient.GetAsync("/Admin/Analytics/Sales?from=2026-01-01&to=2026-01-01");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Admin_image_upload_returns_processed_image_urls()
     {
         using var content = new MultipartFormDataContent();
@@ -603,6 +701,14 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         return variant.Id;
     }
 
+    private async Task<int> CreateOrderAsync(int variantId, int quantity)
+    {
+        var response = await CheckoutAsync(variantId, quantity);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return json.RootElement.GetProperty("orderId").GetInt32();
+    }
+
     private async Task<int> CreateAddressAsync(string userId, string title, string city, string street)
     {
         using var scope = _factory.Services.CreateScope();
@@ -686,7 +792,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         return await db.Orders.Where(order => order.Id == orderId).Select(order => order.PaymentStatus).SingleAsync();
     }
 
-    private sealed class TestApplicationFactory(string connectionString) : WebApplicationFactory<Program>
+    private sealed class TestApplicationFactory(string connectionString, bool isAdmin = true) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -708,9 +814,9 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
                         options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName;
                         options.DefaultForbidScheme = TestAuthenticationHandler.SchemeName;
                     })
-                    .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
+                    .AddScheme<TestAuthenticationOptions, TestAuthenticationHandler>(
                         TestAuthenticationHandler.SchemeName,
-                        _ => { });
+                        options => options.IsAdmin = isAdmin);
             });
         }
     }
@@ -754,24 +860,30 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     private sealed class TestAuthenticationHandler(
-        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        IOptionsMonitor<TestAuthenticationOptions> options,
         ILoggerFactory logger,
-        UrlEncoder encoder) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+        UrlEncoder encoder) : AuthenticationHandler<TestAuthenticationOptions>(options, logger, encoder)
     {
         public const string SchemeName = "OrderWorkflowTest";
 
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
-            var claims = new[]
+            var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, TestUserId),
-                new Claim(ClaimTypes.Name, "Workflow Tester"),
-                new Claim(ClaimTypes.Role, "Admin")
+                new Claim(ClaimTypes.Name, "Workflow Tester")
             };
+            if (Options.IsAdmin)
+                claims.Add(new Claim(ClaimTypes.Role, "Admin"));
             var identity = new ClaimsIdentity(claims, SchemeName);
             var principal = new ClaimsPrincipal(identity);
             var ticket = new AuthenticationTicket(principal, SchemeName);
             return Task.FromResult(AuthenticateResult.Success(ticket));
         }
+    }
+
+    private sealed class TestAuthenticationOptions : AuthenticationSchemeOptions
+    {
+        public bool IsAdmin { get; set; }
     }
 }
