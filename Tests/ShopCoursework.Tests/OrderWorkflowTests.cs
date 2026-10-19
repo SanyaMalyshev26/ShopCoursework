@@ -139,6 +139,61 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Customer_can_cancel_own_new_order_and_stock_is_restored_once()
+    {
+        var variantId = await CreateVariantAsync(stock: 4);
+        var checkout = await CheckoutAsync(variantId, quantity: 2);
+        using var json = JsonDocument.Parse(await checkout.Content.ReadAsStringAsync());
+        var orderId = json.RootElement.GetProperty("orderId").GetInt32();
+
+        var accountHtml = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index"));
+        Assert.Contains($"/Account/CancelOrder/{orderId}", accountHtml);
+        Assert.Equal(2, await GetStockAsync(variantId));
+
+        var cancel = await PostFormAsync($"/Account/CancelOrder/{orderId}");
+        Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+        Assert.Equal(OrderStatuses.Cancelled, await GetOrderStatusAsync(orderId));
+        Assert.Equal(4, await GetStockAsync(variantId));
+
+        var repeatCancel = await PostFormAsync($"/Account/CancelOrder/{orderId}");
+        Assert.Equal(HttpStatusCode.OK, repeatCancel.StatusCode);
+        Assert.Equal(OrderStatuses.Cancelled, await GetOrderStatusAsync(orderId));
+        Assert.Equal(4, await GetStockAsync(variantId));
+    }
+
+    [Fact]
+    public async Task Customer_cannot_cancel_another_users_order()
+    {
+        var variantId = await CreateVariantAsync(stock: 3);
+        var checkout = await CheckoutAsync(variantId, quantity: 1);
+        using var json = JsonDocument.Parse(await checkout.Content.ReadAsStringAsync());
+        var orderId = json.RootElement.GetProperty("orderId").GetInt32();
+        const string anotherUserId = "another-workflow-test-user";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Users.Add(new ApplicationUser
+            {
+                Id = anotherUserId,
+                UserName = "another-workflow-test@example.invalid",
+                Email = "another-workflow-test@example.invalid"
+            });
+            await db.SaveChangesAsync();
+
+            var order = await db.Orders.SingleAsync(item => item.Id == orderId);
+            order.UserId = anotherUserId;
+            await db.SaveChangesAsync();
+        }
+
+        var response = await PostFormAsync($"/Account/CancelOrder/{orderId}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(OrderStatuses.New, await GetOrderStatusAsync(orderId));
+        Assert.Equal(2, await GetStockAsync(variantId));
+    }
+
+    [Fact]
     public async Task Checkout_rejects_an_address_owned_by_another_user()
     {
         var variantId = await CreateVariantAsync(stock: 2);
@@ -205,47 +260,53 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         using var json = JsonDocument.Parse(await checkout.Content.ReadAsStringAsync());
         var orderId = json.RootElement.GetProperty("orderId").GetInt32();
 
-        var confirm = await AdminPostAsync($"/Admin/Orders/{orderId}/Confirm");
+        var confirm = await PostFormAsync($"/Admin/Orders/{orderId}/Confirm");
         Assert.Equal(HttpStatusCode.OK, confirm.StatusCode);
         Assert.Equal(OrderStatuses.Confirmed, await GetOrderStatusAsync(orderId));
 
-        var ship = await AdminPostAsync($"/Admin/Orders/{orderId}/Ship");
+        var ship = await PostFormAsync($"/Admin/Orders/{orderId}/Ship");
         Assert.Equal(HttpStatusCode.OK, ship.StatusCode);
         Assert.Equal(OrderStatuses.Shipped, await GetOrderStatusAsync(orderId));
+        var accountAfterShipping = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index"));
+        Assert.DoesNotContain($"/Account/CancelOrder/{orderId}", accountAfterShipping);
+        var customerCancelAfterShipping = await PostFormAsync($"/Account/CancelOrder/{orderId}");
+        Assert.Equal(HttpStatusCode.OK, customerCancelAfterShipping.StatusCode);
+        Assert.Equal(OrderStatuses.Shipped, await GetOrderStatusAsync(orderId));
+        Assert.Equal(3, await GetStockAsync(variantId));
         var adminHtml = WebUtility.HtmlDecode(await _client.GetStringAsync("/Admin/Orders"));
         Assert.Contains("г. Москва, Тестовая, 1", adminHtml);
         Assert.Contains(PaymentMethods.CashOnDelivery, adminHtml);
 
-        var prematurePayment = await AdminPostAsync($"/Admin/Orders/{orderId}/MarkPaid");
+        var prematurePayment = await PostFormAsync($"/Admin/Orders/{orderId}/MarkPaid");
         Assert.Equal(HttpStatusCode.OK, prematurePayment.StatusCode);
         Assert.Equal(PaymentStatuses.Pending, await GetPaymentStatusAsync(orderId));
 
-        var prematureCancel = await AdminPostAsync($"/Admin/Orders/{orderId}/Cancel");
+        var prematureCancel = await PostFormAsync($"/Admin/Orders/{orderId}/Cancel");
         Assert.Equal(HttpStatusCode.OK, prematureCancel.StatusCode);
         Assert.Equal(OrderStatuses.Shipped, await GetOrderStatusAsync(orderId));
         Assert.Equal(3, await GetStockAsync(variantId));
 
-        var deliver = await AdminPostAsync($"/Admin/Orders/{orderId}/Deliver");
+        var deliver = await PostFormAsync($"/Admin/Orders/{orderId}/Deliver");
         Assert.Equal(HttpStatusCode.OK, deliver.StatusCode);
         Assert.Equal(OrderStatuses.Delivered, await GetOrderStatusAsync(orderId));
         Assert.Equal(PaymentStatuses.Pending, await GetPaymentStatusAsync(orderId));
 
-        var repeatedDelivery = await AdminPostAsync($"/Admin/Orders/{orderId}/Deliver");
+        var repeatedDelivery = await PostFormAsync($"/Admin/Orders/{orderId}/Deliver");
         Assert.Equal(HttpStatusCode.OK, repeatedDelivery.StatusCode);
         Assert.Equal(OrderStatuses.Delivered, await GetOrderStatusAsync(orderId));
 
-        var markPaid = await AdminPostAsync($"/Admin/Orders/{orderId}/MarkPaid");
+        var markPaid = await PostFormAsync($"/Admin/Orders/{orderId}/MarkPaid");
         Assert.Equal(HttpStatusCode.OK, markPaid.StatusCode);
         Assert.Equal(PaymentStatuses.Paid, await GetPaymentStatusAsync(orderId));
         var accountHtml = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index"));
         Assert.Contains($"{OrderStatuses.Delivered}</span>", accountHtml);
         Assert.Contains($"{PaymentMethods.CashOnDelivery} · {PaymentStatuses.Paid}", accountHtml);
 
-        var repeatedPayment = await AdminPostAsync($"/Admin/Orders/{orderId}/MarkPaid");
+        var repeatedPayment = await PostFormAsync($"/Admin/Orders/{orderId}/MarkPaid");
         Assert.Equal(HttpStatusCode.OK, repeatedPayment.StatusCode);
         Assert.Equal(PaymentStatuses.Paid, await GetPaymentStatusAsync(orderId));
 
-        var invalidCancel = await AdminPostAsync($"/Admin/Orders/{orderId}/Cancel");
+        var invalidCancel = await PostFormAsync($"/Admin/Orders/{orderId}/Cancel");
         Assert.Equal(HttpStatusCode.OK, invalidCancel.StatusCode);
         Assert.Equal(3, await GetStockAsync(variantId));
         Assert.Equal(OrderStatuses.Delivered, await GetOrderStatusAsync(orderId));
@@ -255,12 +316,12 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         using var secondJson = JsonDocument.Parse(await secondCheckout.Content.ReadAsStringAsync());
         var cancellableOrderId = secondJson.RootElement.GetProperty("orderId").GetInt32();
 
-        var cancel = await AdminPostAsync($"/Admin/Orders/{cancellableOrderId}/Cancel");
+        var cancel = await PostFormAsync($"/Admin/Orders/{cancellableOrderId}/Cancel");
         Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
         Assert.Equal(OrderStatuses.Cancelled, await GetOrderStatusAsync(cancellableOrderId));
         Assert.Equal(5, await GetStockAsync(secondVariantId));
 
-        var repeatCancel = await AdminPostAsync($"/Admin/Orders/{cancellableOrderId}/Cancel");
+        var repeatCancel = await PostFormAsync($"/Admin/Orders/{cancellableOrderId}/Cancel");
         Assert.Equal(HttpStatusCode.OK, repeatCancel.StatusCode);
         Assert.Equal(OrderStatuses.Cancelled, await GetOrderStatusAsync(cancellableOrderId));
         Assert.Equal(5, await GetStockAsync(secondVariantId));
@@ -316,7 +377,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         return await _client.SendAsync(request);
     }
 
-    private async Task<HttpResponseMessage> AdminPostAsync(string path)
+    private async Task<HttpResponseMessage> PostFormAsync(string path)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
         {

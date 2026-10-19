@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
+using ShopCoursework.Services;
 
 namespace ShopCoursework.Controllers;
 
@@ -11,10 +12,12 @@ namespace ShopCoursework.Controllers;
 public class OrdersAdminController : Controller
 {
     private readonly ApplicationDbContext _db;
+    private readonly OrderCancellationService _orderCancellation;
 
-    public OrdersAdminController(ApplicationDbContext db)
+    public OrdersAdminController(ApplicationDbContext db, OrderCancellationService orderCancellation)
     {
         _db = db;
+        _orderCancellation = orderCancellation;
     }
 
     [HttpGet("")]
@@ -64,38 +67,12 @@ public class OrdersAdminController : Controller
     [HttpPost("{id:int}/Cancel")]
     public async Task<IActionResult> Cancel(int id)
     {
-        await using var transaction = await _db.Database.BeginTransactionAsync();
-
-        var updated = await _db.Orders
-            .Where(order => order.Id == id &&
-                           (order.Status == OrderStatuses.New || order.Status == OrderStatuses.Confirmed))
-            .ExecuteUpdateAsync(updates => updates.SetProperty(order => order.Status, OrderStatuses.Cancelled));
-
-        if (updated != 1)
-        {
-            await transaction.RollbackAsync();
+        var result = await _orderCancellation.CancelAsync(id);
+        if (result == OrderCancellationResult.NotFound)
+            return NotFound();
+        if (result == OrderCancellationResult.NotCancellable)
             return await ReportFailedTransition(id);
-        }
 
-        var items = await _db.OrderItems
-            .Where(item => item.OrderId == id && item.ProductVariantId != null)
-            .Select(item => new { VariantId = item.ProductVariantId!.Value, item.Quantity })
-            .ToListAsync();
-
-        foreach (var item in items.GroupBy(item => item.VariantId)
-                     .Select(group => new { VariantId = group.Key, Quantity = group.Sum(item => item.Quantity) }))
-        {
-            var restored = await _db.ProductVariants
-                .Where(variant => variant.Id == item.VariantId)
-                .ExecuteUpdateAsync(updates =>
-                    updates.SetProperty(variant => variant.Stock, variant => variant.Stock + item.Quantity));
-
-            if (restored != 1)
-                throw new InvalidOperationException(
-                    $"Cannot restore stock for variant {item.VariantId} while cancelling order {id}.");
-        }
-
-        await transaction.CommitAsync();
         TempData["Message"] = $"Заказ #{id} отменён, остатки возвращены на склад.";
         return RedirectToAction(nameof(Index));
     }

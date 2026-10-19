@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
+using ShopCoursework.Services;
 
 namespace ShopCoursework.Controllers;
 
@@ -12,14 +14,17 @@ public class AccountController : Controller
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly ApplicationDbContext _db;
+    private readonly OrderCancellationService _orderCancellation;
 
     public AccountController(UserManager<ApplicationUser> userManager,
                              SignInManager<ApplicationUser> signInManager,
-                             ApplicationDbContext db)
+                             ApplicationDbContext db,
+                             OrderCancellationService orderCancellation)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _db = db;
+        _orderCancellation = orderCancellation;
     }
 
     // Личный кабинет: только для вошедших
@@ -205,5 +210,22 @@ public class AccountController : Controller
             TempData["Message"] = "Адрес удалён";
         }
         return RedirectToAction("Index");
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> CancelOrder(int id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var result = await _orderCancellation.CancelAsync(id, userId);
+        if (result == OrderCancellationResult.Cancelled)
+            TempData["Message"] = $"Заказ #{id} отменён, остатки возвращены на склад.";
+        else
+            TempData["Error"] = "Заказ не найден или уже передан в доставку и не может быть отменён.";
+
+        return Redirect("/Account/Index#orders");
     }
 }

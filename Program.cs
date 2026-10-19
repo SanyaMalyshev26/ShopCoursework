@@ -2,12 +2,14 @@ using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Data;
 using Microsoft.AspNetCore.Identity;
 using ShopCoursework.Models;
+using ShopCoursework.Services;
 
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=shop.db"));
+builder.Services.AddScoped<OrderCancellationService>();
 
     builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {

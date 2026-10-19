@@ -130,7 +130,16 @@
             <span class="badge bg-secondary">@o.Status</span>
             <div class="small text-muted mt-1">@o.PaymentMethod · @o.PaymentStatus</div>
         </td>
-        <td></td>
+        <td>
+            @if (o.Status == ShopCoursework.Models.OrderStatuses.New ||
+                 o.Status == ShopCoursework.Models.OrderStatuses.Confirmed)
+            {
+                <form method="post" asp-action="CancelOrder" asp-route-id="@o.Id"
+                      onsubmit="return confirm('Отменить заказ #@o.Id?');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Отменить</button>
+                </form>
+            }
+        </td>
     </tr>
 }
                     </tbody>
