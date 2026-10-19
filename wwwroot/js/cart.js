@@ -109,9 +109,14 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
 
     const lines = cart.map(i => ({ id: parseInt(i.id), qty: i.qty }));
 
+    const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+
     const response = await fetch('/Orders/Create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': token
+        },
         body: JSON.stringify(lines)
     });
 

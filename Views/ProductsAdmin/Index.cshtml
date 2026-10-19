@@ -42,7 +42,7 @@
                         <td>@p.Rating.ToString("0.##", ru) ★</td>
                         <td class="text-end">
                             <a href="/Admin/Products/Edit/@p.Id" class="btn btn-sm btn-outline-secondary">Изменить</a>
-                            <form method="post" action="/Admin/Products/Delete/@p.Id" class="d-inline"
+                            <form method="post" action="/Admin/Products/Delete/@p.Id" asp-antiforgery="true" class="d-inline"
                                   onsubmit="return confirm('Удалить товар «@p.Name»?');">
                                 <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
                             </form>
