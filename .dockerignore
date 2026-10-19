@@ -1,0 +1,12 @@
+.git
+.vs
+.vscode
+.DS_Store
+**/bin/
+**/obj/
+**/TestResults/
+Tests/
+shop.db*
+.env
+.env.*
+!.env.example

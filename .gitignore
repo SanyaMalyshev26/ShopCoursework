@@ -485,3 +485,8 @@ $RECYCLE.BIN/
 
 
 shop.db*
+
+# Local Docker configuration
+.env
+.env.*
+!.env.example

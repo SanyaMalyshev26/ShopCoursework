@@ -39,6 +39,10 @@ var app = builder.Build();
 // Создаём роль Admin и назначаем её пользователю из настроек
 using (var scope = app.Services.CreateScope())
 {
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    if (app.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
+        await db.Database.MigrateAsync();
+
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 

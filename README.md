@@ -54,6 +54,18 @@ dotnet run
 
 Не публикуйте реальные адреса и секреты в общедоступной конфигурации. Для локальных переопределений используйте User Secrets или переменные окружения ASP.NET Core Configuration.
 
+### Запуск через Docker Compose
+
+Требуется Docker Desktop или Docker Engine с Compose v2. Скопируйте `.env.example` в `.env` и при необходимости задайте `ADMIN_EMAIL`, затем из корня проекта выполните:
+
+```bash
+docker compose up --build
+```
+
+Сайт будет доступен на `http://localhost:8080` (порт меняется через `SHOP_PORT` в `.env`). При первом запуске контейнер применит EF Core-миграции к SQLite. База, файлы в `wwwroot/uploads` и ключи ASP.NET Data Protection хранятся в постоянных Docker volumes (`shop_data`, `shop_uploads`, `shop_keys`) и сохраняются при пересоздании контейнера. Ключи Data Protection нужны, чтобы действующие cookie-аутентификации не сбрасывались при перезапуске. Не удаляйте эти volumes, если нужно сохранить данные.
+
+Для остановки используйте `Ctrl+C`, затем `docker compose down`. Health-check доступен по адресу `http://localhost:8080/health/ready`. Значения магазина можно переопределить через `STORE_NAME`, `STORE_CURRENCY_CODE` и `STORE_CULTURE`.
+
 ## Основные возможности
 
 - просмотр каталога и добавление товаров в корзину;
