@@ -38,6 +38,32 @@
 
         <div class="col-lg-4">
             <div class="bg-white rounded shadow-sm p-4">
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    var addresses = ViewBag.Addresses as List<ShopCoursework.Models.Address> ?? new();
+                    if (addresses.Count > 0)
+                    {
+                        <div class="mb-4">
+                            <label for="deliveryAddressId" class="form-label fw-semibold">Адрес доставки</label>
+                            <select id="deliveryAddressId" class="form-select">
+                                @foreach (var address in addresses)
+                                {
+                                    <option value="@address.Id" selected="@address.IsDefault">
+                                        @address.Title — г. @address.City, @address.Street
+                                    </option>
+                                }
+                            </select>
+                            <a class="small" href="/Account/Index#addresses">Управлять адресами</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-warning">
+                            Чтобы оформить заказ, сначала
+                            <a href="/Account/Index#addresses">добавьте адрес доставки в личном кабинете</a>.
+                        </div>
+                    }
+                }
                 <h5 class="mb-3">Итого</h5>
                 <div class="d-flex justify-content-between mb-2">
                     <span class="text-muted">Товаров</span>
@@ -56,7 +82,11 @@
                     <span>К оплате</span>
                     <span id="grandTotal">@(0m.ToString("C0", currencyCulture))</span>
                 </div>
-                <button class="btn btn-primary w-100 btn-lg" id="checkoutBtn">Оформить заказ</button>
+                <button class="btn btn-primary w-100 btn-lg" id="checkoutBtn"
+                        disabled="@(User.Identity?.IsAuthenticated == true &&
+                                   (ViewBag.Addresses as List<ShopCoursework.Models.Address> ?? new()).Count == 0)">
+                    Оформить заказ
+                </button>
             </div>
         </div>
     </div>

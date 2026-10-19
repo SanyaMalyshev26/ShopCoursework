@@ -13,6 +13,12 @@ public class CartLine
     public int Qty { get; set; }
 }
 
+public class CheckoutRequest
+{
+    public int AddressId { get; set; }
+    public List<CartLine>? Lines { get; set; }
+}
+
 public class OrdersController : Controller
 {
     private readonly ApplicationDbContext _db;
@@ -23,18 +29,21 @@ public class OrdersController : Controller
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create([FromBody] List<CartLine>? lines)
+    public async Task<IActionResult> Create([FromBody] CheckoutRequest? request)
     {
         if (User.Identity?.IsAuthenticated != true)
             return Unauthorized();
 
-        if (lines == null || lines.Count == 0 || lines.Count > 100 ||
-            lines.Any(line => line.VariantId < 1 || line.Qty is < 1 or > 99))
+        if (request?.Lines == null || request.Lines.Count == 0 || request.Lines.Count > 100 ||
+            request.Lines.Any(line => line.VariantId < 1 || line.Qty is < 1 or > 99))
         {
-            return BadRequest();
+            return BadRequest(new { message = "Корзина содержит некорректные данные." });
         }
 
-        var quantities = lines
+        if (request.AddressId < 1)
+            return BadRequest(new { message = "Выберите адрес доставки." });
+
+        var quantities = request.Lines
             .GroupBy(line => line.VariantId)
             .Select(group => new
             {
@@ -47,6 +56,24 @@ public class OrdersController : Controller
             return BadRequest();
 
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var address = await _db.Addresses
+            .Where(candidate =>
+                candidate.Id == request.AddressId &&
+                candidate.UserId == User.FindFirstValue(ClaimTypes.NameIdentifier))
+            .Select(candidate => new
+            {
+                candidate.Title,
+                candidate.City,
+                candidate.Street
+            })
+            .SingleOrDefaultAsync();
+
+        if (address == null)
+        {
+            await transaction.RollbackAsync();
+            return BadRequest(new { message = "Выбранный адрес доставки недоступен. Обновите страницу." });
+        }
 
         var variantIds = quantities.Select(line => line.VariantId).ToList();
         var variants = await _db.ProductVariants
@@ -63,7 +90,10 @@ public class OrdersController : Controller
 
         var order = new Order
         {
-            UserId = User.FindFirstValue(ClaimTypes.NameIdentifier)!
+            UserId = User.FindFirstValue(ClaimTypes.NameIdentifier)!,
+            ShippingAddressTitle = address.Title,
+            ShippingCity = address.City,
+            ShippingStreet = address.Street
         };
 
         foreach (var line in quantities)

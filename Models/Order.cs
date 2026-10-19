@@ -8,5 +8,8 @@ public class Order
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string Status { get; set; } = OrderStatuses.New;
     public decimal Total { get; set; }
+    public string? ShippingAddressTitle { get; set; }
+    public string? ShippingCity { get; set; }
+    public string? ShippingStreet { get; set; }
     public List<OrderItem> Items { get; set; } = new();
 }

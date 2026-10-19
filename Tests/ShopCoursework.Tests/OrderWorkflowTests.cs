@@ -27,6 +27,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     private TestApplicationFactory _factory = null!;
     private HttpClient _client = null!;
     private string _antiforgeryToken = "";
+    private int _addressId;
 
     public async Task InitializeAsync()
     {
@@ -62,6 +63,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
             Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(error => error.Description)));
         }
 
+        _addressId = await CreateAddressAsync(TestUserId, "Дом", "Москва", "Тестовая, 1");
         _antiforgeryToken = await GetAntiforgeryTokenAsync();
     }
 
@@ -76,6 +78,17 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
             if (File.Exists(path))
                 File.Delete(path);
         }
+    }
+
+    [Fact]
+    public async Task Cart_shows_the_users_saved_delivery_address()
+    {
+        var html = WebUtility.HtmlDecode(await _client.GetStringAsync("/Cart"));
+
+        Assert.Contains("deliveryAddressId", html);
+        Assert.Contains("Дом", html);
+        Assert.Contains("Москва", html);
+        Assert.Contains("Тестовая, 1", html);
     }
 
     [Fact]
@@ -97,6 +110,9 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
 
         Assert.Equal(2, variant.Stock);
         Assert.Equal(OrderStatuses.New, order.Status);
+        Assert.Equal("Дом", order.ShippingAddressTitle);
+        Assert.Equal("Москва", order.ShippingCity);
+        Assert.Equal("Тестовая, 1", order.ShippingStreet);
         Assert.Equal("Джинсы", line.ProductName);
         Assert.StartsWith("TEST-", line.VariantSku);
         Assert.Equal("M", line.VariantSize);
@@ -117,6 +133,47 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(1, await db.ProductVariants.Where(item => item.Id == variantId).Select(item => item.Stock).SingleAsync());
         Assert.Empty(await db.Orders.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Checkout_rejects_an_address_owned_by_another_user()
+    {
+        var variantId = await CreateVariantAsync(stock: 2);
+        var otherAddressId = await CreateAddressAsync("another-user", "Чужой", "Казань", "Посторонняя, 2");
+
+        var response = await CheckoutAsync(variantId, quantity: 1, otherAddressId);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(2, await GetStockAsync(variantId));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await db.Orders.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Order_keeps_address_snapshot_after_saved_address_changes()
+    {
+        var variantId = await CreateVariantAsync(stock: 2);
+        var response = await CheckoutAsync(variantId, quantity: 1);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var address = await db.Addresses.SingleAsync(item => item.Id == _addressId);
+            address.City = "Санкт-Петербург";
+            address.Street = "Новая, 99";
+            await db.SaveChangesAsync();
+        }
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var order = await verifyDb.Orders.AsNoTracking().SingleAsync();
+        Assert.Equal("Москва", order.ShippingCity);
+        Assert.Equal("Тестовая, 1", order.ShippingStreet);
+
+        var accountHtml = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index"));
+        Assert.Contains("г. Москва, Тестовая, 1", accountHtml);
     }
 
     [Fact]
@@ -152,6 +209,8 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         var ship = await AdminPostAsync($"/Admin/Orders/{orderId}/Ship");
         Assert.Equal(HttpStatusCode.OK, ship.StatusCode);
         Assert.Equal(OrderStatuses.Shipped, await GetOrderStatusAsync(orderId));
+        var adminHtml = WebUtility.HtmlDecode(await _client.GetStringAsync("/Admin/Orders"));
+        Assert.Contains("г. Москва, Тестовая, 1", adminHtml);
 
         var invalidCancel = await AdminPostAsync($"/Admin/Orders/{orderId}/Cancel");
         Assert.Equal(HttpStatusCode.OK, invalidCancel.StatusCode);
@@ -191,8 +250,28 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         return variant.Id;
     }
 
-    private Task<HttpResponseMessage> CheckoutAsync(int variantId, int quantity) =>
-        SendJsonAsync("/Orders/Create", new[] { new { variantId, qty = quantity } });
+    private async Task<int> CreateAddressAsync(string userId, string title, string city, string street)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var address = new Address
+        {
+            UserId = userId,
+            Title = title,
+            City = city,
+            Street = street
+        };
+        db.Addresses.Add(address);
+        await db.SaveChangesAsync();
+        return address.Id;
+    }
+
+    private Task<HttpResponseMessage> CheckoutAsync(int variantId, int quantity, int? addressId = null) =>
+        SendJsonAsync("/Orders/Create", new
+        {
+            addressId = addressId ?? _addressId,
+            lines = new[] { new { variantId, qty = quantity } }
+        });
 
     private async Task<HttpResponseMessage> SendJsonAsync(string path, object body)
     {

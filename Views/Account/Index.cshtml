@@ -119,6 +119,10 @@
                     }
                 </ul>
             }
+            @if (!string.IsNullOrEmpty(o.ShippingCity) && !string.IsNullOrEmpty(o.ShippingStreet))
+            {
+                <div class="small text-muted">Доставка: @o.ShippingAddressTitle, г. @o.ShippingCity, @o.ShippingStreet</div>
+            }
         </td>
         <td>@o.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
         <td>@o.Total.ToString("C0", currencyCulture)</td>
@@ -185,3 +189,11 @@
 
     </div>
 </main>
+
+@section Scripts {
+    <script>
+        if (window.location.hash === '#addresses') {
+            bootstrap.Tab.getOrCreateInstance(document.getElementById('addresses-tab')).show();
+        }
+    </script>
+}

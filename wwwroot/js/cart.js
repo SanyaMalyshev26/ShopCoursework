@@ -130,6 +130,7 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
     if (window.cart.length === 0) return;
 
     const lines = window.cart.map(item => ({ variantId: Number(item.variantId), qty: item.qty }));
+    const addressSelect = document.getElementById('deliveryAddressId');
 
     const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
 
@@ -139,7 +140,10 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
             'Content-Type': 'application/json',
             'RequestVerificationToken': token
         },
-        body: JSON.stringify(lines)
+        body: JSON.stringify({
+            addressId: addressSelect ? Number(addressSelect.value) : 0,
+            lines
+        })
     });
 
     if (response.status === 401) {
@@ -150,6 +154,9 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         if (response.status === 409) {
             const problem = await response.json();
             alert(problem.message || 'Вариант товара закончился. Обновите корзину и попробуйте снова.');
+        } else if (response.status === 400) {
+            const problem = await response.json();
+            alert(problem.message || 'Проверьте адрес доставки и попробуйте снова.');
         } else {
             alert('Не удалось оформить заказ');
         }

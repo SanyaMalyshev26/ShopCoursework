@@ -256,6 +256,15 @@ namespace ShopCoursework.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ShippingAddressTitle")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ShippingCity")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ShippingStreet")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("TEXT");

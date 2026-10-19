@@ -71,6 +71,13 @@
                                         </li>
                                     }
                                 </ul>
+                                @if (!string.IsNullOrEmpty(order.ShippingCity) &&
+                                     !string.IsNullOrEmpty(order.ShippingStreet))
+                                {
+                                    <div class="small text-muted mt-2">
+                                        Доставка: @order.ShippingAddressTitle, г. @order.ShippingCity, @order.ShippingStreet
+                                    </div>
+                                }
                             </td>
                             <td class="text-nowrap">@order.Total.ToString("C0", currencyCulture)</td>
                             <td><span class="badge bg-secondary">@order.Status</span></td>
