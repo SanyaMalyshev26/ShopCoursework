@@ -287,6 +287,12 @@ namespace ShopCoursework.Migrations
                     b.Property<int>("ProductId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ProductName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ProductVariantId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("INTEGER");
 
@@ -294,11 +300,22 @@ namespace ShopCoursework.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("VariantColor")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VariantSize")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VariantSku")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OrderId");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("ProductVariantId");
 
                     b.ToTable("OrderItems");
                 });
@@ -363,6 +380,49 @@ namespace ShopCoursework.Migrations
                             Name = "Свитер",
                             Price = 2990m,
                             Rating = 4.75
+                        });
+                });
+
+            modelBuilder.Entity("ShopCoursework.Models.ProductVariant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Size")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Stock")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("Sku")
+                        .IsUnique();
+
+                    b.ToTable("ProductVariants", t =>
+                        {
+                            t.HasCheckConstraint("CK_ProductVariants_Stock_NonNegative", "\"Stock\" >= 0");
                         });
                 });
 
@@ -442,7 +502,25 @@ namespace ShopCoursework.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("ShopCoursework.Models.ProductVariant", "ProductVariant")
+                        .WithMany()
+                        .HasForeignKey("ProductVariantId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Order");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("ProductVariant");
+                });
+
+            modelBuilder.Entity("ShopCoursework.Models.ProductVariant", b =>
+                {
+                    b.HasOne("ShopCoursework.Models.Product", "Product")
+                        .WithMany("Variants")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Product");
                 });
@@ -450,6 +528,11 @@ namespace ShopCoursework.Migrations
             modelBuilder.Entity("ShopCoursework.Models.Order", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("ShopCoursework.Models.Product", b =>
+                {
+                    b.Navigation("Variants");
                 });
 #pragma warning restore 612, 618
         }

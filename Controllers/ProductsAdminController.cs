@@ -21,7 +21,10 @@ public class ProductsAdminController : Controller
     [HttpGet("")]
     public async Task<IActionResult> Index()
     {
-        var products = await _db.Products.OrderBy(p => p.Id).ToListAsync();
+        var products = await _db.Products
+            .Include(product => product.Variants)
+            .OrderBy(product => product.Id)
+            .ToListAsync();
         return View(products);
     }
 
@@ -84,6 +87,97 @@ public class ProductsAdminController : Controller
         await _db.SaveChangesAsync();
         TempData["Message"] = "Товар сохранён";
         return RedirectToAction("Index");
+    }
+
+    [HttpGet("{id:int}/Variants")]
+    public async Task<IActionResult> Variants(int id)
+    {
+        var product = await _db.Products
+            .Include(item => item.Variants.OrderBy(variant => variant.Size).ThenBy(variant => variant.Color))
+            .SingleOrDefaultAsync(item => item.Id == id);
+        if (product == null) return NotFound();
+
+        return View("Variants", product);
+    }
+
+    [HttpPost("{id:int}/Variants")]
+    public async Task<IActionResult> AddVariant(int id, ProductVariant input)
+    {
+        var product = await _db.Products.FindAsync(id);
+        if (product == null) return NotFound();
+
+        input.Sku = input.Sku?.Trim().ToUpperInvariant() ?? "";
+        input.Size = input.Size?.Trim() ?? "";
+        input.Color = input.Color?.Trim() ?? "";
+
+        if (!ModelState.IsValid ||
+            string.IsNullOrWhiteSpace(input.Sku) || input.Sku.Length > 64 ||
+            string.IsNullOrWhiteSpace(input.Size) || input.Size.Length > 32 ||
+            string.IsNullOrWhiteSpace(input.Color) || input.Color.Length > 64 ||
+            input.Stock < 0)
+        {
+            TempData["Error"] = "Проверьте SKU, размер, цвет и неотрицательный остаток.";
+            return RedirectToAction(nameof(Variants), new { id });
+        }
+
+        if (await _db.ProductVariants.AnyAsync(variant => variant.Sku == input.Sku))
+        {
+            TempData["Error"] = $"SKU {input.Sku} уже используется.";
+            return RedirectToAction(nameof(Variants), new { id });
+        }
+
+        _db.ProductVariants.Add(new ProductVariant
+        {
+            ProductId = id,
+            Sku = input.Sku,
+            Size = input.Size,
+            Color = input.Color,
+            Stock = input.Stock,
+            IsActive = true
+        });
+
+        await _db.SaveChangesAsync();
+        TempData["Message"] = "Вариант добавлен";
+        return RedirectToAction(nameof(Variants), new { id });
+    }
+
+    [HttpPost("{id:int}/Variants/{variantId:int}/Update")]
+    public async Task<IActionResult> UpdateVariant(int id, int variantId, int stock, bool isActive)
+    {
+        var variant = await _db.ProductVariants
+            .SingleOrDefaultAsync(item => item.Id == variantId && item.ProductId == id);
+        if (variant == null) return NotFound();
+        if (!ModelState.IsValid || stock < 0)
+        {
+            TempData["Error"] = "Остаток не может быть отрицательным.";
+            return RedirectToAction(nameof(Variants), new { id });
+        }
+
+        variant.Stock = stock;
+        variant.IsActive = isActive;
+        await _db.SaveChangesAsync();
+
+        TempData["Message"] = "Остаток обновлён";
+        return RedirectToAction(nameof(Variants), new { id });
+    }
+
+    [HttpPost("{id:int}/Variants/{variantId:int}/Delete")]
+    public async Task<IActionResult> DeleteVariant(int id, int variantId)
+    {
+        var variant = await _db.ProductVariants
+            .SingleOrDefaultAsync(item => item.Id == variantId && item.ProductId == id);
+        if (variant == null) return NotFound();
+
+        if (await _db.OrderItems.AnyAsync(item => item.ProductVariantId == variantId))
+        {
+            TempData["Error"] = "Вариант уже есть в заказах. Отключите его вместо удаления.";
+            return RedirectToAction(nameof(Variants), new { id });
+        }
+
+        _db.ProductVariants.Remove(variant);
+        await _db.SaveChangesAsync();
+        TempData["Message"] = "Вариант удалён";
+        return RedirectToAction(nameof(Variants), new { id });
     }
 
     // Удаление

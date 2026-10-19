@@ -17,7 +17,10 @@ public class HomeController : Controller
 
     public async Task<IActionResult> Index()
     {
-        var products = await _db.Products.ToListAsync();
+        var products = await _db.Products
+            .Include(p => p.Variants.Where(v => v.IsActive))
+            .OrderBy(p => p.Id)
+            .ToListAsync();
         return View(products);
     }
 

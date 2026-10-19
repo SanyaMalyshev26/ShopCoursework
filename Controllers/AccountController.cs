@@ -29,6 +29,8 @@ public class AccountController : Controller
         var user = await _userManager.GetUserAsync(User);
         ViewBag.Orders = await _db.Orders
             .Where(o => o.UserId == user!.Id)
+            .Include(order => order.Items)
+                .ThenInclude(item => item.Product)
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
         ViewBag.Addresses = await _db.Addresses

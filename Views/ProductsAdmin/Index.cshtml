@@ -28,6 +28,7 @@
                     <th>ID</th>
                     <th>Название</th>
                     <th>Цена</th>
+                    <th>Варианты / остаток</th>
                     <th>Рейтинг</th>
                     <th></th>
                 </tr>
@@ -40,6 +41,10 @@
                         <td>@p.Id</td>
                         <td>@p.Name</td>
                         <td>@p.Price.ToString("C0", currencyCulture)</td>
+                        <td>
+                            <a href="/Admin/Products/@p.Id/Variants">@p.Variants.Count вариантов</a>
+                            <span class="text-muted">· @p.Variants.Where(v => v.IsActive).Sum(v => v.Stock) шт.</span>
+                        </td>
                         <td>@p.Rating.ToString("0.##", currencyCulture) ★</td>
                         <td class="text-end">
                             <a href="/Admin/Products/Edit/@p.Id" class="btn btn-sm btn-outline-secondary">Изменить</a>

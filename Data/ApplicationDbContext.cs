@@ -12,6 +12,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     }
 
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
 
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
@@ -25,6 +26,31 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.Entity<Product>().Property(p => p.Price).HasPrecision(18, 2);
         modelBuilder.Entity<Order>().Property(o => o.Total).HasPrecision(18, 2);
         modelBuilder.Entity<OrderItem>().Property(i => i.UnitPrice).HasPrecision(18, 2);
+
+        modelBuilder.Entity<ProductVariant>()
+            .HasIndex(v => v.Sku)
+            .IsUnique();
+        modelBuilder.Entity<ProductVariant>()
+            .Property(v => v.Sku)
+            .HasMaxLength(64);
+        modelBuilder.Entity<ProductVariant>()
+            .Property(v => v.Size)
+            .HasMaxLength(32);
+        modelBuilder.Entity<ProductVariant>()
+            .Property(v => v.Color)
+            .HasMaxLength(64);
+        modelBuilder.Entity<ProductVariant>()
+            .ToTable(table => table.HasCheckConstraint("CK_ProductVariants_Stock_NonNegative", "\"Stock\" >= 0"));
+        modelBuilder.Entity<ProductVariant>()
+            .HasOne(v => v.Product)
+            .WithMany(p => p.Variants)
+            .HasForeignKey(v => v.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<OrderItem>()
+            .HasOne(i => i.ProductVariant)
+            .WithMany()
+            .HasForeignKey(i => i.ProductVariantId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         modelBuilder.Entity<Product>().HasData(
             new Product { Id = 1, Name = "Джинсы",   Price = 3500,  Rating = 3.9 },

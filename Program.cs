@@ -7,7 +7,7 @@ using ShopCoursework.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite("Data Source=shop.db"));
+    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection") ?? "Data Source=shop.db"));
 
     builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {

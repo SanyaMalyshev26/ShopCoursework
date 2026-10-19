@@ -8,4 +8,5 @@ public class Product
     public decimal Price { get; set; }
     public double Rating { get; set; }
     public string ImageUrl { get; set; } = "https://placehold.co/300x250";
+    public List<ProductVariant> Variants { get; set; } = new();
 }

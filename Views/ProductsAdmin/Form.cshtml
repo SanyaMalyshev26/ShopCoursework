@@ -43,6 +43,10 @@
 
         <div class="col-12 d-flex gap-2">
             <button type="submit" class="btn btn-primary">Сохранить</button>
+            @if (!isNew)
+            {
+                <a href="/Admin/Products/@Model.Id/Variants" class="btn btn-outline-primary">Варианты и остатки</a>
+            }
             <a href="/Admin/Products" class="btn btn-outline-secondary">Отмена</a>
         </div>
     </form>

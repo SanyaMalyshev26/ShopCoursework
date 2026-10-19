@@ -1,5 +1,7 @@
 // Берём корзину из localStorage (её туда пишет script.js с главной)
-cart = JSON.parse(localStorage.getItem('cart') || '[]');
+window.cart = JSON.parse(localStorage.getItem('cart') || '[]')
+    .filter(item => Number.isInteger(Number(item.variantId)) && Number(item.qty) > 0);
+localStorage.setItem('cart', JSON.stringify(window.cart));
 
 const tbody = document.getElementById('cartTableBody');
 const emptyBlock = document.getElementById('emptyCart');
@@ -13,7 +15,7 @@ const currencyFormatter = new Intl.NumberFormat(currencyContainer.dataset.curren
 
 // Сохранение и обновление счётчика в шапке
 function saveCart() {
-    localStorage.setItem('cart', JSON.stringify(cart));
+    localStorage.setItem('cart', JSON.stringify(window.cart));
     updateCartBadge(); // функция из script.js
 }
 
@@ -24,7 +26,7 @@ function formatPrice(value) {
 
 // Рендер всей корзины
 function renderCart() {
-    if (cart.length === 0) {
+    if (window.cart.length === 0) {
         emptyBlock.classList.remove('d-none');
         contentBlock.classList.add('d-none');
         return;
@@ -34,21 +36,24 @@ function renderCart() {
 
     tbody.innerHTML = '';
 
-    cart.forEach((item, index) => {
+    window.cart.forEach((item, index) => {
         const row = document.createElement('tr');
 
         row.innerHTML = `
             <td>
                 <div class="d-flex align-items-center gap-3">
                     <img src="https://placehold.co/60x60" alt="" width="60" height="60" class="rounded">
-                    <span class="fw-semibold">${item.name}</span>
+                    <span class="fw-semibold">${escapeHtml(item.name)}<br>
+                        <small class="text-muted">${escapeHtml(item.size)} · ${escapeHtml(item.color)}</small>
+                    </span>
                 </div>
             </td>
             <td class="text-center">
                 <div class="input-group input-group-sm justify-content-center" style="max-width:120px; margin:auto;">
                     <button class="btn btn-outline-secondary btn-minus" data-index="${index}">−</button>
                     <input type="text" class="form-control text-center" value="${item.qty}" readonly>
-                    <button class="btn btn-outline-secondary btn-plus" data-index="${index}">+</button>
+                    <button class="btn btn-outline-secondary btn-plus" data-index="${index}"
+                            ${item.qty >= item.stock ? 'disabled' : ''}>+</button>
                 </div>
             </td>
             <td class="text-end">${formatPrice(item.price)}</td>
@@ -65,12 +70,23 @@ function renderCart() {
     updateTotals();
 }
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[character]);
+}
+
 // Обработчики кнопок +/− и удаления
 function attachRowEvents() {
     document.querySelectorAll('.btn-plus').forEach(btn => {
         btn.addEventListener('click', () => {
             const i = parseInt(btn.dataset.index);
-            cart[i].qty++;
+            if (window.cart[i].qty >= window.cart[i].stock) return;
+            window.cart[i].qty++;
             saveCart();
             renderCart();
         });
@@ -79,10 +95,10 @@ function attachRowEvents() {
     document.querySelectorAll('.btn-minus').forEach(btn => {
         btn.addEventListener('click', () => {
             const i = parseInt(btn.dataset.index);
-            if (cart[i].qty > 1) {
-                cart[i].qty--;
+            if (window.cart[i].qty > 1) {
+                window.cart[i].qty--;
             } else {
-                cart.splice(i, 1); // если 1 → удаляем
+                window.cart.splice(i, 1);
             }
             saveCart();
             renderCart();
@@ -92,7 +108,7 @@ function attachRowEvents() {
     document.querySelectorAll('.btn-remove').forEach(btn => {
         btn.addEventListener('click', () => {
             const i = parseInt(btn.dataset.index);
-            cart.splice(i, 1);
+            window.cart.splice(i, 1);
             saveCart();
             renderCart();
         });
@@ -101,8 +117,8 @@ function attachRowEvents() {
 
 // Подсчёт итогов
 function updateTotals() {
-    const totalItems = cart.reduce((sum, i) => sum + i.qty, 0);
-    const subtotal = cart.reduce((sum, i) => sum + i.price * i.qty, 0);
+    const totalItems = window.cart.reduce((sum, i) => sum + i.qty, 0);
+    const subtotal = window.cart.reduce((sum, i) => sum + i.price * i.qty, 0);
 
     document.getElementById('totalItems').textContent = totalItems;
     document.getElementById('subtotal').textContent = formatPrice(subtotal);
@@ -111,9 +127,9 @@ function updateTotals() {
 
 // Оформление заказа
 document.getElementById('checkoutBtn').addEventListener('click', async () => {
-    if (cart.length === 0) return;
+    if (window.cart.length === 0) return;
 
-    const lines = cart.map(i => ({ id: parseInt(i.id), qty: i.qty }));
+    const lines = window.cart.map(item => ({ variantId: Number(item.variantId), qty: item.qty }));
 
     const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
 
@@ -131,13 +147,18 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         return;
     }
     if (!response.ok) {
-        alert('Не удалось оформить заказ');
+        if (response.status === 409) {
+            const problem = await response.json();
+            alert(problem.message || 'Вариант товара закончился. Обновите корзину и попробуйте снова.');
+        } else {
+            alert('Не удалось оформить заказ');
+        }
         return;
     }
 
     const result = await response.json();
     alert('Заказ #' + result.orderId + ' оформлен!');
-    cart = [];
+    window.cart = [];
     saveCart();
     renderCart();
 });

@@ -27,7 +27,18 @@
                         <h5 class="card-title">@p.Name</h5>
                         <p class="card-text text-muted small">@p.Rating.ToString("0.##", currencyCulture) ★</p>
                         <p class="fw-bold fs-5 mt-auto mb-2">@p.Price.ToString("C0", currencyCulture)</p>
-                        <button class="btn btn-primary w-100 add-to-cart"
+                        <label class="form-label small mt-2" for="variant-@p.Id">Размер и цвет</label>
+                        <select id="variant-@p.Id" class="form-select variant-select mb-2">
+                            <option value="">Выберите вариант</option>
+                            @foreach (var variant in p.Variants.OrderBy(v => v.Size).ThenBy(v => v.Color))
+                            {
+                                <option value="@variant.Id" data-stock="@variant.Stock"
+                                        disabled="@(variant.Stock == 0)">
+                                    @variant.Size · @variant.Color — @(variant.Stock > 0 ? $"В наличии: {variant.Stock}" : "Нет в наличии")
+                                </option>
+                            }
+                        </select>
+                        <button class="btn btn-primary w-100 add-to-cart" disabled
                                 data-id="@p.Id"
                                 data-name="@p.Name"
                                 data-price="@p.Price.ToString(CultureInfo.InvariantCulture)">

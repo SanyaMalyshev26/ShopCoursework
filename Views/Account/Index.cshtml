@@ -101,7 +101,25 @@
                         @foreach (var o in (List<ShopCoursework.Models.Order>)ViewBag.Orders)
 {
     <tr>
-        <td>#@o.Id</td>
+        <td>
+            #@o.Id
+            @if (o.Items.Count > 0)
+            {
+                <ul class="small text-muted mb-0 ps-3">
+                    @foreach (var item in o.Items)
+                    {
+                        <li>
+                            @(item.ProductName ?? item.Product?.Name)
+                            @if (!string.IsNullOrEmpty(item.VariantSize) || !string.IsNullOrEmpty(item.VariantColor))
+                            {
+                                <span>— @item.VariantSize @item.VariantColor</span>
+                            }
+                            × @item.Quantity
+                        </li>
+                    }
+                </ul>
+            }
+        </td>
         <td>@o.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
         <td>@o.Total.ToString("C0", currencyCulture)</td>
         <td><span class="badge bg-secondary">@o.Status</span></td>
