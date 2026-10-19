@@ -26,6 +26,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.Entity<Product>().Property(p => p.Price).HasPrecision(18, 2);
         modelBuilder.Entity<Order>().Property(o => o.Total).HasPrecision(18, 2);
         modelBuilder.Entity<OrderItem>().Property(i => i.UnitPrice).HasPrecision(18, 2);
+        modelBuilder.Entity<Order>()
+            .HasIndex(order => new { order.UserId, order.CheckoutRequestId })
+            .IsUnique();
+        modelBuilder.Entity<Order>()
+            .Property(order => order.CheckoutRequestId)
+            .HasMaxLength(128);
+        modelBuilder.Entity<Order>()
+            .Property(order => order.CheckoutRequestHash)
+            .HasMaxLength(64);
 
         modelBuilder.Entity<ProductVariant>()
             .HasIndex(v => v.Sku)

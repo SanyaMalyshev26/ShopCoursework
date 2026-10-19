@@ -125,6 +125,20 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Checkout_rejects_null_lines_without_changing_stock()
+    {
+        var variantId = await CreateVariantAsync(stock: 2);
+        var response = await SendJsonAsync("/Orders/Create", new
+        {
+            addressId = _addressId,
+            lines = new object?[] { null }
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(2, await GetStockAsync(variantId));
+    }
+
+    [Fact]
     public async Task Checkout_rejects_insufficient_stock_without_creating_order()
     {
         var variantId = await CreateVariantAsync(stock: 1);
@@ -136,6 +150,143 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(1, await db.ProductVariants.Where(item => item.Id == variantId).Select(item => item.Stock).SingleAsync());
         Assert.Empty(await db.Orders.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Checkout_retries_with_the_same_idempotency_key_return_one_order()
+    {
+        var variantId = await CreateVariantAsync(stock: 3);
+        const string idempotencyKey = "checkout-retry-001";
+
+        var first = await CheckoutAsync(variantId, quantity: 1, idempotencyKey: idempotencyKey);
+        var retry = await CheckoutAsync(variantId, quantity: 1, idempotencyKey: idempotencyKey);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        using var firstJson = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+        using var retryJson = JsonDocument.Parse(await retry.Content.ReadAsStringAsync());
+        Assert.False(firstJson.RootElement.GetProperty("duplicate").GetBoolean());
+        Assert.Equal(
+            firstJson.RootElement.GetProperty("orderId").GetInt32(),
+            retryJson.RootElement.GetProperty("orderId").GetInt32());
+        Assert.True(retryJson.RootElement.GetProperty("duplicate").GetBoolean());
+        Assert.Equal(2, await GetStockAsync(variantId));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Single(await db.Orders.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Concurrent_checkout_retries_with_same_key_create_only_one_order()
+    {
+        var variantId = await CreateVariantAsync(stock: 2);
+        const string idempotencyKey = "checkout-concurrent-001";
+
+        var responses = await Task.WhenAll(
+            CheckoutAsync(variantId, quantity: 1, idempotencyKey: idempotencyKey),
+            CheckoutAsync(variantId, quantity: 1, idempotencyKey: idempotencyKey));
+
+        Assert.Contains(responses, response => response.StatusCode == HttpStatusCode.OK);
+        Assert.All(responses, response =>
+            Assert.Contains(response.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Conflict }));
+
+        var retry = await CheckoutAsync(variantId, quantity: 1, idempotencyKey: idempotencyKey);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        Assert.Equal(1, await GetStockAsync(variantId));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Single(await db.Orders.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Checkout_rejects_reusing_an_idempotency_key_with_different_contents()
+    {
+        var firstVariantId = await CreateVariantAsync(stock: 3);
+        var secondVariantId = await CreateVariantAsync(stock: 3);
+        const string idempotencyKey = "checkout-payload-001";
+
+        var first = await CheckoutAsync(firstVariantId, quantity: 1, idempotencyKey: idempotencyKey);
+        var changed = await CheckoutAsync(secondVariantId, quantity: 1, idempotencyKey: idempotencyKey);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, changed.StatusCode);
+        Assert.Equal(2, await GetStockAsync(firstVariantId));
+        Assert.Equal(3, await GetStockAsync(secondVariantId));
+    }
+
+    [Fact]
+    public async Task Checkout_rejects_malformed_idempotency_key()
+    {
+        var variantId = await CreateVariantAsync(stock: 2);
+
+        var response = await CheckoutAsync(variantId, quantity: 1, idempotencyKey: "short");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(2, await GetStockAsync(variantId));
+    }
+
+    [Fact]
+    public async Task Admin_product_and_variant_validation_rejects_invalid_values()
+    {
+        var invalidProduct = await PostFormAsync("/Admin/Products/Create", new Dictionary<string, string>
+        {
+            ["Name"] = "Invalid test product",
+            ["Price"] = "-1",
+            ["Rating"] = "6",
+            ["ImageUrl"] = ""
+        });
+        Assert.Equal(HttpStatusCode.OK, invalidProduct.StatusCode);
+
+        var unsafeImageUrl = await PostFormAsync("/Admin/Products/Create", new Dictionary<string, string>
+        {
+            ["Name"] = "Unsafe image URL",
+            ["Price"] = "100",
+            ["Rating"] = "4",
+            ["ImageUrl"] = "javascript:alert(1)"
+        });
+        Assert.Equal(HttpStatusCode.OK, unsafeImageUrl.StatusCode);
+
+        var invalidVariant = await PostFormAsync("/Admin/Products/1/Variants", new Dictionary<string, string>
+        {
+            ["Sku"] = "INVALID-STOCK",
+            ["Size"] = "M",
+            ["Color"] = "Black",
+            ["Stock"] = "-1"
+        });
+        Assert.Equal(HttpStatusCode.OK, invalidVariant.StatusCode);
+
+        var oversizedSku = await PostFormAsync("/Admin/Products/1/Variants", new Dictionary<string, string>
+        {
+            ["Sku"] = new string('S', 65),
+            ["Size"] = "M",
+            ["Color"] = "Black",
+            ["Stock"] = "1"
+        });
+        Assert.Equal(HttpStatusCode.OK, oversizedSku.StatusCode);
+
+        var overpostedVariant = await PostFormAsync("/Admin/Products/Create", new Dictionary<string, string>
+        {
+            ["Id"] = "1000",
+            ["Name"] = "Clean product",
+            ["Price"] = "1250",
+            ["Rating"] = "4",
+            ["ImageUrl"] = "/images/clean-product.jpg",
+            ["Variants[0].Sku"] = "OVERPOSTED-SKU",
+            ["Variants[0].Size"] = "M",
+            ["Variants[0].Color"] = "Black",
+            ["Variants[0].Stock"] = "99"
+        });
+        Assert.Equal(HttpStatusCode.OK, overpostedVariant.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(5, await db.Products.CountAsync());
+        Assert.Contains(await db.Products.ToListAsync(), product => product.Name == "Clean product");
+        Assert.DoesNotContain(await db.Products.ToListAsync(), product => product.Id == 1000);
+        var variants = await db.ProductVariants.ToListAsync();
+        Assert.DoesNotContain(variants, variant => variant.Sku == "INVALID-STOCK");
+        Assert.DoesNotContain(variants, variant => variant.Sku.Length > 64);
+        Assert.DoesNotContain(variants, variant => variant.Sku == "OVERPOSTED-SKU");
     }
 
     [Fact]
@@ -360,31 +511,38 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         return address.Id;
     }
 
-    private Task<HttpResponseMessage> CheckoutAsync(int variantId, int quantity, int? addressId = null) =>
+    private Task<HttpResponseMessage> CheckoutAsync(
+        int variantId,
+        int quantity,
+        int? addressId = null,
+        string? idempotencyKey = null) =>
         SendJsonAsync("/Orders/Create", new
         {
             addressId = addressId ?? _addressId,
-            lines = new[] { new { variantId, qty = quantity } }
-        });
+            lines = new[] { new { variantId, qty = quantity, price = 0 } }
+        }, idempotencyKey);
 
-    private async Task<HttpResponseMessage> SendJsonAsync(string path, object body)
+    private async Task<HttpResponseMessage> SendJsonAsync(string path, object body, string? idempotencyKey = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
         {
             Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
         };
         request.Headers.Add("RequestVerificationToken", _antiforgeryToken);
+        if (idempotencyKey != null)
+            request.Headers.Add("Idempotency-Key", idempotencyKey);
         return await _client.SendAsync(request);
     }
 
-    private async Task<HttpResponseMessage> PostFormAsync(string path)
+    private async Task<HttpResponseMessage> PostFormAsync(
+        string path,
+        Dictionary<string, string>? formValues = null)
     {
+        var form = formValues ?? new Dictionary<string, string>();
+        form["__RequestVerificationToken"] = _antiforgeryToken;
         using var request = new HttpRequestMessage(HttpMethod.Post, path)
         {
-            Content = new FormUrlEncodedContent(new Dictionary<string, string>
-            {
-                ["__RequestVerificationToken"] = _antiforgeryToken
-            })
+            Content = new FormUrlEncodedContent(form)
         };
         return await _client.SendAsync(request);
     }

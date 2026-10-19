@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
@@ -36,19 +37,28 @@ public class ProductsAdminController : Controller
     }
 
     [HttpPost("Create")]
-    public async Task<IActionResult> Create(Product product)
+    public async Task<IActionResult> Create(
+        [Bind(nameof(Product.Name), nameof(Product.Description), nameof(Product.Price), nameof(Product.Rating), nameof(Product.ImageUrl))]
+        Product product)
     {
-        if (string.IsNullOrWhiteSpace(product.Name) || product.Price < 0)
+        var input = new Product
         {
-            ModelState.AddModelError("", "Укажите название и корректную цену");
-            return View("Form", product);
+            Name = product.Name?.Trim() ?? "",
+            Description = product.Description?.Trim(),
+            Price = product.Price,
+            Rating = product.Rating,
+            ImageUrl = product.ImageUrl?.Trim() ?? ""
+        };
+        if (!ValidateProduct(input))
+        {
+            input.Id = 0;
+            return View("Form", input);
         }
 
-        product.Id = 0;
-        if (string.IsNullOrWhiteSpace(product.ImageUrl))
-            product.ImageUrl = "https://placehold.co/300x250";
+        if (string.IsNullOrWhiteSpace(input.ImageUrl))
+            input.ImageUrl = "https://placehold.co/300x250";
 
-        _db.Products.Add(product);
+        _db.Products.Add(input);
         await _db.SaveChangesAsync();
         TempData["Message"] = "Товар добавлен";
         return RedirectToAction("Index");
@@ -64,14 +74,19 @@ public class ProductsAdminController : Controller
     }
 
     [HttpPost("Edit/{id:int}")]
-    public async Task<IActionResult> Edit(int id, Product input)
+    public async Task<IActionResult> Edit(
+        int id,
+        [Bind(nameof(Product.Name), nameof(Product.Description), nameof(Product.Price), nameof(Product.Rating), nameof(Product.ImageUrl))]
+        Product input)
     {
         var product = await _db.Products.FindAsync(id);
         if (product == null) return NotFound();
 
-        if (string.IsNullOrWhiteSpace(input.Name) || input.Price < 0)
+        input.Name = input.Name?.Trim() ?? "";
+        input.Description = input.Description?.Trim();
+        input.ImageUrl = input.ImageUrl?.Trim() ?? "";
+        if (!ValidateProduct(input))
         {
-            ModelState.AddModelError("", "Укажите название и корректную цену");
             input.Id = id;
             return View("Form", input);
         }
@@ -110,6 +125,8 @@ public class ProductsAdminController : Controller
         input.Size = input.Size?.Trim() ?? "";
         input.Color = input.Color?.Trim() ?? "";
 
+        input.Id = 0;
+        input.Product = null;
         if (!ModelState.IsValid ||
             string.IsNullOrWhiteSpace(input.Sku) || input.Sku.Length > 64 ||
             string.IsNullOrWhiteSpace(input.Size) || input.Size.Length > 32 ||
@@ -136,7 +153,17 @@ public class ProductsAdminController : Controller
             IsActive = true
         });
 
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception) when (
+            exception.GetBaseException() is SqliteException { SqliteExtendedErrorCode: 2067 })
+        {
+            TempData["Error"] = $"SKU {input.Sku} уже используется.";
+            return RedirectToAction(nameof(Variants), new { id });
+        }
+
         TempData["Message"] = "Вариант добавлен";
         return RedirectToAction(nameof(Variants), new { id });
     }
@@ -199,5 +226,39 @@ public class ProductsAdminController : Controller
         await _db.SaveChangesAsync();
         TempData["Message"] = "Товар удалён";
         return RedirectToAction("Index");
+    }
+
+    private bool ValidateProduct(Product product)
+    {
+        if (string.IsNullOrWhiteSpace(product.Name))
+            ModelState.AddModelError(nameof(product.Name), "Укажите название товара.");
+        if (!ModelState.IsValid)
+            return false;
+        if (!double.IsFinite(product.Rating))
+        {
+            ModelState.AddModelError(nameof(product.Rating), "Рейтинг должен быть числом от 0 до 5.");
+            return false;
+        }
+        if (!IsAllowedImageUrl(product.ImageUrl))
+        {
+            ModelState.AddModelError(nameof(product.ImageUrl), "Для изображения укажите HTTP(S)-ссылку или локальный путь.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsAllowedImageUrl(string? imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl))
+            return true;
+
+        if (imageUrl.StartsWith('/') &&
+            !imageUrl.StartsWith("//", StringComparison.Ordinal) &&
+            !imageUrl.Contains('\\'))
+            return true;
+
+        return Uri.TryCreate(imageUrl, UriKind.Absolute, out var absoluteUri) &&
+               (absoluteUri.Scheme == Uri.UriSchemeHttp || absoluteUri.Scheme == Uri.UriSchemeHttps);
     }
 }

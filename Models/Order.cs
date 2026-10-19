@@ -9,6 +9,8 @@ public class Order
     public string Status { get; set; } = OrderStatuses.New;
     public string PaymentMethod { get; set; } = PaymentMethods.CashOnDelivery;
     public string PaymentStatus { get; set; } = PaymentStatuses.Pending;
+    public string? CheckoutRequestId { get; set; }
+    public string? CheckoutRequestHash { get; set; }
     public decimal Total { get; set; }
     public string? ShippingAddressTitle { get; set; }
     public string? ShippingCity { get; set; }
