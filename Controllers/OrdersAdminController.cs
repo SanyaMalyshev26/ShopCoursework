@@ -38,6 +38,29 @@ public class OrdersAdminController : Controller
     public Task<IActionResult> Ship(int id) =>
         ChangeStatus(id, OrderStatuses.Confirmed, OrderStatuses.Shipped);
 
+    [HttpPost("{id:int}/Deliver")]
+    public Task<IActionResult> Deliver(int id) =>
+        ChangeStatus(id, OrderStatuses.Shipped, OrderStatuses.Delivered);
+
+    [HttpPost("{id:int}/MarkPaid")]
+    public async Task<IActionResult> MarkPaid(int id)
+    {
+        var updated = await _db.Orders
+            .Where(order =>
+                order.Id == id &&
+                order.Status == OrderStatuses.Delivered &&
+                order.PaymentMethod == PaymentMethods.CashOnDelivery &&
+                order.PaymentStatus == PaymentStatuses.Pending)
+            .ExecuteUpdateAsync(updates =>
+                updates.SetProperty(order => order.PaymentStatus, PaymentStatuses.Paid));
+
+        if (updated != 1)
+            return await ReportFailedTransition(id);
+
+        TempData["Message"] = $"Для заказа #{id} отмечено получение оплаты.";
+        return RedirectToAction(nameof(Index));
+    }
+
     [HttpPost("{id:int}/Cancel")]
     public async Task<IActionResult> Cancel(int id)
     {

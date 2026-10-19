@@ -260,6 +260,10 @@ namespace ShopCoursework.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("PaymentStatus")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ShippingAddressTitle")
                         .HasColumnType("TEXT");
 

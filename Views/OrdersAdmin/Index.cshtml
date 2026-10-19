@@ -83,7 +83,10 @@
                                 @order.Total.ToString("C0", currencyCulture)
                                 <div class="small text-muted">@order.PaymentMethod</div>
                             </td>
-                            <td><span class="badge bg-secondary">@order.Status</span></td>
+                            <td>
+                                <span class="badge bg-secondary">@order.Status</span>
+                                <div class="small text-muted mt-1">@order.PaymentStatus</div>
+                            </td>
                             <td>
                                 <div class="d-flex flex-wrap gap-2">
                                     @if (order.Status == OrderStatuses.New)
@@ -96,6 +99,20 @@
                                     {
                                         <form method="post" action="/Admin/Orders/@order.Id/Ship" asp-antiforgery="true">
                                             <button type="submit" class="btn btn-sm btn-outline-success">Отправить</button>
+                                        </form>
+                                    }
+                                    @if (order.Status == OrderStatuses.Shipped)
+                                    {
+                                        <form method="post" action="/Admin/Orders/@order.Id/Deliver" asp-antiforgery="true">
+                                            <button type="submit" class="btn btn-sm btn-outline-success">Отметить доставленным</button>
+                                        </form>
+                                    }
+                                    @if (order.Status == OrderStatuses.Delivered &&
+                                         order.PaymentMethod == PaymentMethods.CashOnDelivery &&
+                                         order.PaymentStatus == PaymentStatuses.Pending)
+                                    {
+                                        <form method="post" action="/Admin/Orders/@order.Id/MarkPaid" asp-antiforgery="true">
+                                            <button type="submit" class="btn btn-sm btn-outline-primary">Отметить оплату полученной</button>
                                         </form>
                                     }
                                     @if (order.Status == OrderStatuses.New || order.Status == OrderStatuses.Confirmed)

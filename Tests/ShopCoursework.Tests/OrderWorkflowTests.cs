@@ -112,6 +112,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(2, variant.Stock);
         Assert.Equal(OrderStatuses.New, order.Status);
         Assert.Equal(PaymentMethods.CashOnDelivery, order.PaymentMethod);
+        Assert.Equal(PaymentStatuses.Pending, order.PaymentStatus);
         Assert.Equal("Дом", order.ShippingAddressTitle);
         Assert.Equal("Москва", order.ShippingCity);
         Assert.Equal("Тестовая, 1", order.ShippingStreet);
@@ -215,10 +216,39 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Contains("г. Москва, Тестовая, 1", adminHtml);
         Assert.Contains(PaymentMethods.CashOnDelivery, adminHtml);
 
+        var prematurePayment = await AdminPostAsync($"/Admin/Orders/{orderId}/MarkPaid");
+        Assert.Equal(HttpStatusCode.OK, prematurePayment.StatusCode);
+        Assert.Equal(PaymentStatuses.Pending, await GetPaymentStatusAsync(orderId));
+
+        var prematureCancel = await AdminPostAsync($"/Admin/Orders/{orderId}/Cancel");
+        Assert.Equal(HttpStatusCode.OK, prematureCancel.StatusCode);
+        Assert.Equal(OrderStatuses.Shipped, await GetOrderStatusAsync(orderId));
+        Assert.Equal(3, await GetStockAsync(variantId));
+
+        var deliver = await AdminPostAsync($"/Admin/Orders/{orderId}/Deliver");
+        Assert.Equal(HttpStatusCode.OK, deliver.StatusCode);
+        Assert.Equal(OrderStatuses.Delivered, await GetOrderStatusAsync(orderId));
+        Assert.Equal(PaymentStatuses.Pending, await GetPaymentStatusAsync(orderId));
+
+        var repeatedDelivery = await AdminPostAsync($"/Admin/Orders/{orderId}/Deliver");
+        Assert.Equal(HttpStatusCode.OK, repeatedDelivery.StatusCode);
+        Assert.Equal(OrderStatuses.Delivered, await GetOrderStatusAsync(orderId));
+
+        var markPaid = await AdminPostAsync($"/Admin/Orders/{orderId}/MarkPaid");
+        Assert.Equal(HttpStatusCode.OK, markPaid.StatusCode);
+        Assert.Equal(PaymentStatuses.Paid, await GetPaymentStatusAsync(orderId));
+        var accountHtml = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index"));
+        Assert.Contains($"{OrderStatuses.Delivered}</span>", accountHtml);
+        Assert.Contains($"{PaymentMethods.CashOnDelivery} · {PaymentStatuses.Paid}", accountHtml);
+
+        var repeatedPayment = await AdminPostAsync($"/Admin/Orders/{orderId}/MarkPaid");
+        Assert.Equal(HttpStatusCode.OK, repeatedPayment.StatusCode);
+        Assert.Equal(PaymentStatuses.Paid, await GetPaymentStatusAsync(orderId));
+
         var invalidCancel = await AdminPostAsync($"/Admin/Orders/{orderId}/Cancel");
         Assert.Equal(HttpStatusCode.OK, invalidCancel.StatusCode);
         Assert.Equal(3, await GetStockAsync(variantId));
-        Assert.Equal(OrderStatuses.Shipped, await GetOrderStatusAsync(orderId));
+        Assert.Equal(OrderStatuses.Delivered, await GetOrderStatusAsync(orderId));
 
         var secondVariantId = await CreateVariantAsync(stock: 5);
         var secondCheckout = await CheckoutAsync(secondVariantId, quantity: 2);
@@ -320,6 +350,13 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         return await db.Orders.Where(order => order.Id == orderId).Select(order => order.Status).SingleAsync();
+    }
+
+    private async Task<string> GetPaymentStatusAsync(int orderId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        return await db.Orders.Where(order => order.Id == orderId).Select(order => order.PaymentStatus).SingleAsync();
     }
 
     private sealed class TestApplicationFactory(string connectionString) : WebApplicationFactory<Program>
