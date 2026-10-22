@@ -44,6 +44,45 @@ public class AnalyticsAdminController : Controller
         return Ok(await BuildReportAsync(startDate, endDate, cancellationToken));
     }
 
+    [HttpGet("Sales/Page")]
+    public async Task<IActionResult> SalesPage(
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        CancellationToken cancellationToken)
+    {
+        DateOnly startDate;
+        DateOnly endDate;
+        if (string.IsNullOrEmpty(from) && string.IsNullOrEmpty(to))
+        {
+            endDate = DateOnly.FromDateTime(DateTime.UtcNow);
+            startDate = endDate.AddDays(-29);
+        }
+        else if (!TryParsePeriod(from, to, out startDate, out endDate, out var error))
+        {
+            return BadRequest(new { message = error });
+        }
+
+        return View("Sales", await BuildReportAsync(startDate, endDate, cancellationToken));
+    }
+
+    [HttpGet("Sales/Csv")]
+    public async Task<IActionResult> SalesCsv(
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        CancellationToken cancellationToken)
+    {
+        if (!TryParsePeriod(from, to, out var startDate, out var endDate, out var error))
+            return BadRequest(new { message = error });
+
+        var report = await BuildReportAsync(startDate, endDate, cancellationToken);
+        var csv = BuildCsv(report);
+        var fileName = $"sales-{report.From}-{report.To}.csv";
+        return File(
+            new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetBytes(csv),
+            "text/csv; charset=utf-8",
+            fileName);
+    }
+
     [HttpGet("Sales/Insights")]
     public async Task<IActionResult> SalesInsightsReport(
         [FromQuery] string? from,
@@ -181,6 +220,59 @@ public class AnalyticsAdminController : Controller
                 product.UnitsSold,
                 productRevenue.GetValueOrDefault((product.ProductId, product.ProductName))))
                 .ToList());
+    }
+
+    private static string BuildCsv(SalesReport report)
+    {
+        var rows = new List<string>
+        {
+            CsvRow("Тип", "Дата", "Название", "Заказов", "Выручка", "Оплачено", "Единиц", "ID товара", "Валюта"),
+            CsvRow(
+                "Итог",
+                "",
+                "",
+                report.Summary.Orders.ToString(CultureInfo.InvariantCulture),
+                report.Summary.Revenue.ToString("0.00", CultureInfo.InvariantCulture),
+                report.Summary.PaidRevenue.ToString("0.00", CultureInfo.InvariantCulture),
+                report.Summary.UnitsSold.ToString(CultureInfo.InvariantCulture),
+                "",
+                report.CurrencyCode)
+        };
+
+        rows.AddRange(report.Daily.Select(day => CsvRow(
+            "День",
+            day.Date,
+            "",
+            day.Orders.ToString(CultureInfo.InvariantCulture),
+            day.Revenue.ToString("0.00", CultureInfo.InvariantCulture),
+            "",
+            day.UnitsSold.ToString(CultureInfo.InvariantCulture),
+            "",
+            report.CurrencyCode)));
+        rows.AddRange(report.TopProducts.Select(product => CsvRow(
+            "Товар",
+            "",
+            product.ProductName,
+            "",
+            product.Revenue.ToString("0.00", CultureInfo.InvariantCulture),
+            "",
+            product.UnitsSold.ToString(CultureInfo.InvariantCulture),
+            product.ProductId.ToString(CultureInfo.InvariantCulture),
+            report.CurrencyCode)));
+
+        return string.Join("\r\n", rows) + "\r\n";
+    }
+
+    private static string CsvRow(params string[] values) =>
+        string.Join(",", values.Select(EscapeCsvField));
+
+    private static string EscapeCsvField(string value)
+    {
+        var firstNonWhitespace = value.FirstOrDefault(character => !char.IsWhiteSpace(character));
+        if (firstNonWhitespace is '=' or '+' or '-' or '@')
+            value = "'" + value;
+
+        return "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 
     private static bool TryParsePeriod(

@@ -376,6 +376,69 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Admin_sales_csv_exports_summary_daily_and_top_products_safely()
+    {
+        var variantId = await CreateVariantAsync(stock: 2);
+        var orderId = await CreateOrderAsync(variantId, quantity: 2);
+        var reportDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+        const string formulaName = "  =HYPERLINK(\"https://example.invalid\",\"Click\")";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var order = await db.Orders
+                .Include(item => item.Items)
+                .SingleAsync(item => item.Id == orderId);
+            order.Items.Single().ProductName = formulaName;
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync(
+            $"/Admin/Analytics/Sales/Csv?from={reportDate}&to={reportDate}");
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        var csv = Encoding.UTF8.GetString(bytes);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("utf-8", response.Content.Headers.ContentType?.CharSet);
+        Assert.Contains("sales-" + reportDate, response.Content.Headers.ContentDisposition?.FileName);
+        Assert.StartsWith("\uFEFF", csv);
+        Assert.Contains("\"Итог\",\"\",\"\",\"1\",\"7000.00\",\"0.00\",\"2\",\"\",\"RUB\"", csv);
+        Assert.Contains($"\"День\",\"{reportDate}\",\"\",\"1\",\"7000.00\",\"\",\"2\",\"\",\"RUB\"", csv);
+        Assert.Contains(
+            "\"Товар\",\"\",\"'  =HYPERLINK(\"\"https://example.invalid\"\",\"\"Click\"\")\",\"\",\"7000.00\",\"\",\"2\",\"1\",\"RUB\"",
+            csv);
+
+        var invalidPeriod = await _client.GetAsync(
+            "/Admin/Analytics/Sales/Csv?from=2026-02-02&to=2026-02-01");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPeriod.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_sales_page_displays_report_and_links_csv_for_selected_period()
+    {
+        var variantId = await CreateVariantAsync(stock: 2);
+        await CreateOrderAsync(variantId, quantity: 1);
+        var reportDate = DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
+
+        var response = await _client.GetAsync(
+            $"/Admin/Analytics/Sales/Page?from={reportDate}&to={reportDate}");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Отчёт по продажам", html);
+        Assert.Contains("Выручка", html);
+        Assert.Contains("3\u00a0500,00", html);
+        Assert.Contains("Джинсы", html);
+        Assert.Contains($"href=\"/Admin/Analytics/Sales/Csv?from={reportDate}&to={reportDate}\"", html);
+        Assert.Contains($"value=\"{reportDate}\"", html);
+
+        var invalidPeriod = await _client.GetAsync(
+            "/Admin/Analytics/Sales/Page?from=2026-02-02&to=2026-02-01");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPeriod.StatusCode);
+    }
+
+    [Fact]
     public async Task Admin_orders_can_be_filtered_by_status_payment_and_order_id()
     {
         var variantId = await CreateVariantAsync(stock: 3);
@@ -784,9 +847,14 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         var response = await nonAdminClient.GetAsync("/Admin/Analytics/Sales?from=2026-01-01&to=2026-01-01");
         var insightsResponse = await nonAdminClient.GetAsync(
             "/Admin/Analytics/Sales/Insights?from=2026-01-01&to=2026-01-01");
+        var csvResponse = await nonAdminClient.GetAsync(
+            "/Admin/Analytics/Sales/Csv?from=2026-01-01&to=2026-01-01");
+        var pageResponse = await nonAdminClient.GetAsync("/Admin/Analytics/Sales/Page");
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, insightsResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, csvResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, pageResponse.StatusCode);
     }
 
     [Fact]

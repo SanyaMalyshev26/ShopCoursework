@@ -1,0 +1,116 @@
+@using System.Globalization
+@model ShopCoursework.Services.Analytics.SalesReport
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@{
+    ViewData["Title"] = "Отчёт по продажам";
+    var culture = CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
+}
+
+<main class="container my-5">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+        <div>
+            <h1 class="h2 mb-1">Отчёт по продажам</h1>
+            <p class="text-muted mb-0">@Model.From — @Model.To · @Model.CurrencyCode</p>
+        </div>
+        <a class="btn btn-success"
+           href="/Admin/Analytics/Sales/Csv?from=@Model.From&amp;to=@Model.To">
+            Скачать CSV
+        </a>
+    </div>
+
+    <form method="get" action="/Admin/Analytics/Sales/Page"
+          class="row g-3 align-items-end bg-white rounded shadow-sm p-3 mb-4">
+        <div class="col-sm-5">
+            <label for="reportFrom" class="form-label">С даты (UTC)</label>
+            <input id="reportFrom" name="from" type="date" class="form-control" value="@Model.From" required>
+        </div>
+        <div class="col-sm-5">
+            <label for="reportTo" class="form-label">По дату включительно (UTC)</label>
+            <input id="reportTo" name="to" type="date" class="form-control" value="@Model.To" required>
+        </div>
+        <div class="col-sm-2">
+            <button type="submit" class="btn btn-primary w-100">Показать</button>
+        </div>
+        <div class="col-12 small text-muted">Период не может превышать 366 дней.</div>
+    </form>
+
+    <section class="row g-3 mb-4" aria-label="Сводка продаж">
+        <div class="col-6 col-lg-3">
+            <div class="card h-100"><div class="card-body">
+                <div class="small text-muted">Заказов</div>
+                <div class="fs-3 fw-semibold">@Model.Summary.Orders</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100"><div class="card-body">
+                <div class="small text-muted">Выручка</div>
+                <div class="fs-3 fw-semibold">@Model.Summary.Revenue.ToString("C2", culture)</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100"><div class="card-body">
+                <div class="small text-muted">Оплачено</div>
+                <div class="fs-3 fw-semibold">@Model.Summary.PaidRevenue.ToString("C2", culture)</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100"><div class="card-body">
+                <div class="small text-muted">Продано единиц</div>
+                <div class="fs-3 fw-semibold">@Model.Summary.UnitsSold</div>
+            </div></div>
+        </div>
+    </section>
+
+    <section class="bg-white rounded shadow-sm p-3 mb-4">
+        <h2 class="h4">Продажи по дням</h2>
+        @if (Model.Daily.Count == 0)
+        {
+            <p class="text-muted mb-0">За выбранный период заказов нет.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0">
+                    <thead><tr><th>Дата (UTC)</th><th>Заказов</th><th>Выручка</th><th>Единиц</th></tr></thead>
+                    <tbody>
+                    @foreach (var day in Model.Daily)
+                    {
+                        <tr>
+                            <td>@day.Date</td>
+                            <td>@day.Orders</td>
+                            <td>@day.Revenue.ToString("C2", culture)</td>
+                            <td>@day.UnitsSold</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <section class="bg-white rounded shadow-sm p-3">
+        <h2 class="h4">Популярные товары</h2>
+        @if (Model.TopProducts.Count == 0)
+        {
+            <p class="text-muted mb-0">Данных о продажах нет.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0">
+                    <thead><tr><th>Товар</th><th>Продано</th><th>Выручка</th></tr></thead>
+                    <tbody>
+                    @foreach (var product in Model.TopProducts)
+                    {
+                        <tr>
+                            <td>@product.ProductName</td>
+                            <td>@product.UnitsSold</td>
+                            <td>@product.Revenue.ToString("C2", culture)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</main>
