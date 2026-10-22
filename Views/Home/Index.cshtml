@@ -1,6 +1,6 @@
 ﻿@using System.Globalization
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
-@model List<ShopCoursework.Models.Product>
+@model ShopCoursework.Models.CatalogViewModel
 @{
     ViewData["Title"] = "Главная";
     var currencyCulture = CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
@@ -15,10 +15,46 @@
 </section>
 
 <section id="catalog" class="container my-5">
-    <h2 class="mb-4">Популярные товары</h2>
+    <h2 class="mb-4">Каталог товаров</h2>
+
+    <form method="get" action="/" class="row g-3 align-items-end mb-4">
+        <div class="col-12 col-md-4">
+            <label for="catalogSearch" class="form-label">Поиск</label>
+            <input id="catalogSearch" name="search" value="@Model.Search" maxlength="120"
+                   class="form-control" placeholder="Название или описание">
+        </div>
+        <div class="col-6 col-md-2">
+            <label for="catalogSize" class="form-label">Размер</label>
+            <select id="catalogSize" name="size" class="form-select">
+                <option value="">Любой</option>
+                @foreach (var size in Model.Sizes)
+                {
+                    <option value="@size" selected="@(Model.Size.Equals(size, StringComparison.OrdinalIgnoreCase))">@size</option>
+                }
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <label for="catalogSort" class="form-label">Сортировка</label>
+            <select id="catalogSort" name="sort" class="form-select">
+                <option value="featured" selected="@(Model.Sort == "featured")">По умолчанию</option>
+                <option value="price-asc" selected="@(Model.Sort == "price-asc")">Сначала дешевле</option>
+                <option value="price-desc" selected="@(Model.Sort == "price-desc")">Сначала дороже</option>
+                <option value="rating" selected="@(Model.Sort == "rating")">По рейтингу</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-3">
+            <div class="form-check mb-2">
+                <input id="inStockOnly" name="inStockOnly" value="true" type="checkbox"
+                       class="form-check-input" checked="@Model.InStockOnly">
+                <label for="inStockOnly" class="form-check-label">Только в наличии</label>
+            </div>
+            <button type="submit" class="btn btn-primary">Показать</button>
+            <a href="/#catalog" class="btn btn-outline-secondary">Сбросить</a>
+        </div>
+    </form>
 
     <div class="row g-4">
-        @foreach (var p in Model)
+        @foreach (var p in Model.Products)
         {
             <div class="col-12 col-sm-6 col-md-4 col-lg-3">
                 <div class="card h-100 product-card">
@@ -75,6 +111,12 @@
             </div>
         }
     </div>
+    @if (Model.Products.Count == 0)
+    {
+        <div class="alert alert-info mt-4" role="status">
+            По выбранным условиям товары не найдены. Измените фильтры или сбросьте их.
+        </div>
+    }
 </section>
 
 @section Scripts {

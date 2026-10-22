@@ -1,4 +1,4 @@
-@model List<ShopCoursework.Models.Order>
+@model ShopCoursework.Models.AdminOrdersViewModel
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "Админка: заказы";
@@ -20,9 +20,40 @@
         <div class="alert alert-warning">@TempData["Error"]</div>
     }
 
-    @if (Model.Count == 0)
+    <form method="get" action="/Admin/Orders" class="row g-3 align-items-end mb-4">
+        <div class="col-12 col-md-3">
+            <label for="orderStatus" class="form-label">Статус заказа</label>
+            <select id="orderStatus" name="status" class="form-select">
+                <option value="">Все статусы</option>
+                @foreach (var status in ShopCoursework.Models.AdminOrdersViewModel.StatusOptions)
+                {
+                    <option value="@status" selected="@(Model.Status == status)">@status</option>
+                }
+            </select>
+        </div>
+        <div class="col-12 col-md-3">
+            <label for="paymentStatus" class="form-label">Оплата</label>
+            <select id="paymentStatus" name="paymentStatus" class="form-select">
+                <option value="">Любой статус оплаты</option>
+                @foreach (var paymentStatus in ShopCoursework.Models.AdminOrdersViewModel.PaymentStatusOptions)
+                {
+                    <option value="@paymentStatus" selected="@(Model.PaymentStatus == paymentStatus)">@paymentStatus</option>
+                }
+            </select>
+        </div>
+        <div class="col-12 col-md-4">
+            <label for="orderSearch" class="form-label">Номер заказа или email</label>
+            <input id="orderSearch" name="search" value="@Model.Search" maxlength="120" class="form-control">
+        </div>
+        <div class="col-12 col-md-2 d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Найти</button>
+            <a href="/Admin/Orders" class="btn btn-outline-secondary">Сбросить</a>
+        </div>
+    </form>
+
+    @if (Model.Orders.Count == 0)
     {
-        <div class="alert alert-info">Заказов пока нет.</div>
+        <div class="alert alert-info">Заказов по выбранным условиям нет.</div>
     }
     else
     {
@@ -39,7 +70,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var order in Model)
+                    @foreach (var order in Model.Orders)
                     {
                         <tr>
                             <td>

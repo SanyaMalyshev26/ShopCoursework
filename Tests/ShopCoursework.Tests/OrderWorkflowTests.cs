@@ -141,6 +141,59 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Catalog_filters_by_search_size_and_available_stock()
+    {
+        await CreateVariantAsync(stock: 2, size: "M");
+        await CreateVariantAsync(stock: 0, size: "L");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var product = await db.Products.SingleAsync(item => item.Id == 1);
+            product.Description = "Особенная коллекция для поиска";
+            await db.SaveChangesAsync();
+        }
+
+        var query = Uri.EscapeDataString("джин");
+
+        var matchingResponse = await _client.GetAsync(
+            $"/?search={query}&size=M&inStockOnly=true");
+        var matchingHtml = WebUtility.HtmlDecode(await matchingResponse.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, matchingResponse.StatusCode);
+        Assert.Contains("href=\"/Products/1\"", matchingHtml);
+        Assert.Contains("value=\"джин\"", matchingHtml);
+        Assert.Contains("value=\"M\" selected", matchingHtml);
+        Assert.Contains("checked", matchingHtml);
+        Assert.DoesNotContain("href=\"/Products/2\"", matchingHtml);
+
+        var descriptionSearch = await _client.GetAsync(
+            $"/?search={Uri.EscapeDataString("ОСОБЕННАЯ")}");
+        var descriptionHtml = WebUtility.HtmlDecode(await descriptionSearch.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, descriptionSearch.StatusCode);
+        Assert.Contains("href=\"/Products/1\"", descriptionHtml);
+        Assert.DoesNotContain("href=\"/Products/2\"", descriptionHtml);
+
+        var unavailableResponse = await _client.GetAsync(
+            $"/?search={query}&size=L&inStockOnly=true");
+        var unavailableHtml = await unavailableResponse.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, unavailableResponse.StatusCode);
+        Assert.Contains("товары не найдены", WebUtility.HtmlDecode(unavailableHtml));
+    }
+
+    [Fact]
+    public async Task Catalog_sorts_products_by_price_and_rejects_unknown_sort_options()
+    {
+        var sortedResponse = await _client.GetAsync("/?sort=price-desc");
+        var sortedHtml = await sortedResponse.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, sortedResponse.StatusCode);
+        Assert.True(
+            sortedHtml.IndexOf("href=\"/Products/2\"", StringComparison.Ordinal) <
+            sortedHtml.IndexOf("href=\"/Products/1\"", StringComparison.Ordinal));
+
+        var invalidSortResponse = await _client.GetAsync("/?sort=unexpected");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidSortResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task Readiness_endpoint_reports_database_availability()
     {
         var response = await _client.GetAsync("/health/ready");
@@ -233,6 +286,39 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
 
         var missing = await _client.GetAsync("/Admin/Analytics/Sales?from=2026-02-01");
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_orders_can_be_filtered_by_status_payment_and_order_id()
+    {
+        var variantId = await CreateVariantAsync(stock: 3);
+        var confirmedOrderId = await CreateOrderAsync(variantId, quantity: 1);
+        var newOrderId = await CreateOrderAsync(variantId, quantity: 1);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var confirmedOrder = await db.Orders.SingleAsync(order => order.Id == confirmedOrderId);
+            confirmedOrder.Status = OrderStatuses.Confirmed;
+            confirmedOrder.PaymentStatus = PaymentStatuses.Paid;
+            await db.SaveChangesAsync();
+        }
+
+        var filter = Uri.EscapeDataString(OrderStatuses.Confirmed);
+        var paymentFilter = Uri.EscapeDataString(PaymentStatuses.Paid);
+        var response = await _client.GetAsync(
+            $"/Admin/Orders?status={filter}&paymentStatus={paymentFilter}&search={confirmedOrderId}");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains($"#{confirmedOrderId}", html);
+        Assert.DoesNotContain($"#{newOrderId}", html);
+        Assert.Contains($"value=\"{OrderStatuses.Confirmed}\" selected", html);
+        Assert.Contains($"value=\"{PaymentStatuses.Paid}\" selected", html);
+        Assert.Contains($"value=\"{confirmedOrderId}\"", html);
+
+        var invalidFilter = await _client.GetAsync("/Admin/Orders?status=Unknown");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidFilter.StatusCode);
     }
 
     [Fact]

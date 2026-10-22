@@ -21,16 +21,52 @@ public class OrdersAdminController : Controller
     }
 
     [HttpGet("")]
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(
+        string? status,
+        string? paymentStatus,
+        string? search)
     {
-        var orders = await _db.Orders
+        status = status?.Trim();
+        paymentStatus = paymentStatus?.Trim();
+        search = search?.Trim();
+        if ((!string.IsNullOrEmpty(status) && !AdminOrdersViewModel.StatusOptions.Contains(status)) ||
+            (!string.IsNullOrEmpty(paymentStatus) &&
+             !AdminOrdersViewModel.PaymentStatusOptions.Contains(paymentStatus)) ||
+            search?.Length > 120)
+        {
+            return BadRequest();
+        }
+
+        var query = _db.Orders.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(order => order.Status == status);
+        if (!string.IsNullOrEmpty(paymentStatus))
+            query = query.Where(order => order.PaymentStatus == paymentStatus);
+        if (!string.IsNullOrEmpty(search))
+        {
+            if (int.TryParse(search, out var orderId))
+                query = query.Where(order =>
+                    order.Id == orderId ||
+                    (order.User != null && order.User.Email != null && order.User.Email.Contains(search)));
+            else
+                query = query.Where(order =>
+                    order.User != null && order.User.Email != null && order.User.Email.Contains(search));
+        }
+
+        var orders = await query
             .Include(order => order.User)
             .Include(order => order.Items)
             .OrderByDescending(order => order.CreatedAt)
             .ThenByDescending(order => order.Id)
             .ToListAsync();
 
-        return View(orders);
+        return View(new AdminOrdersViewModel
+        {
+            Orders = orders,
+            Status = status ?? "",
+            PaymentStatus = paymentStatus ?? "",
+            Search = search ?? ""
+        });
     }
 
     [HttpPost("{id:int}/Confirm")]
