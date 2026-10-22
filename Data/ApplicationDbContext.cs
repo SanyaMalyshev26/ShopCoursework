@@ -13,6 +13,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
+    public DbSet<ProductSizeGuide> ProductSizeGuides => Set<ProductSizeGuide>();
 
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
@@ -54,6 +55,27 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .HasOne(v => v.Product)
             .WithMany(p => p.Variants)
             .HasForeignKey(v => v.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<ProductSizeGuide>()
+            .HasIndex(guide => new { guide.ProductId, guide.Size })
+            .IsUnique();
+        modelBuilder.Entity<ProductSizeGuide>()
+            .ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_ProductSizeGuides_ChestRange",
+                    "CAST(\"ChestMin\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"ChestMax\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"ChestMin\" AS REAL) <= CAST(\"ChestMax\" AS REAL)");
+                table.HasCheckConstraint(
+                    "CK_ProductSizeGuides_WaistRange",
+                    "CAST(\"WaistMin\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"WaistMax\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"WaistMin\" AS REAL) <= CAST(\"WaistMax\" AS REAL)");
+                table.HasCheckConstraint(
+                    "CK_ProductSizeGuides_HipsRange",
+                    "CAST(\"HipsMin\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"HipsMax\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"HipsMin\" AS REAL) <= CAST(\"HipsMax\" AS REAL)");
+            });
+        modelBuilder.Entity<ProductSizeGuide>()
+            .HasOne(guide => guide.Product)
+            .WithMany(product => product.SizeGuides)
+            .HasForeignKey(guide => guide.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<OrderItem>()
             .HasOne(i => i.ProductVariant)

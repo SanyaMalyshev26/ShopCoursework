@@ -191,6 +191,167 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Size_recommendation_uses_all_entered_measurements_and_only_available_sizes()
+    {
+        await CreateVariantAsync(stock: 0, size: "S");
+        await CreateVariantAsync(stock: 3, size: "M");
+        await CreateVariantAsync(stock: 5, size: "L");
+        await CreateSizeGuideAsync("S", 95, 105, 75, 85, 95, 105);
+        await CreateSizeGuideAsync("M", 90, 100, 70, 80, 90, 100);
+        await CreateSizeGuideAsync("L", 95, 105, 75, 85, 95, 105);
+
+        using var response = await SendJsonAsync(
+            "/Products/1/SizeRecommendation",
+            new { chest = 100, waist = 80, hips = 100 });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("L", json.RootElement.GetProperty("recommendedSize").GetString());
+        Assert.Equal(5, json.RootElement.GetProperty("availableStock").GetInt32());
+        var matchingSizes = json.RootElement.GetProperty("matchingSizes").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "L", "M" }, matchingSizes.Select(item => item.GetProperty("size").GetString()));
+        Assert.Equal("Рекомендация ориентировочная. Проверьте таблицу размеров перед заказом.",
+            json.RootElement.GetProperty("message").GetString());
+
+        using var strictResponse = await SendJsonAsync(
+            "/Products/1/SizeRecommendation",
+            new { chest = 100, waist = 81 });
+        using var strictJson = JsonDocument.Parse(await strictResponse.Content.ReadAsStringAsync());
+        Assert.Equal("L", strictJson.RootElement.GetProperty("recommendedSize").GetString());
+        Assert.Single(strictJson.RootElement.GetProperty("matchingSizes").EnumerateArray());
+
+        using var noMatchResponse = await SendJsonAsync(
+            "/Products/1/SizeRecommendation",
+            new { chest = 60, waist = 81 });
+        using var noMatchJson = JsonDocument.Parse(await noMatchResponse.Content.ReadAsStringAsync());
+        Assert.Null(noMatchJson.RootElement.GetProperty("recommendedSize").GetString());
+        Assert.Empty(noMatchJson.RootElement.GetProperty("matchingSizes").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Size_recommendation_validates_measurements_and_handles_missing_size_chart()
+    {
+        using var noMeasurements = await SendJsonAsync(
+            "/Products/1/SizeRecommendation",
+            new { chest = (decimal?)null, waist = (decimal?)null, hips = (decimal?)null });
+        Assert.Equal(HttpStatusCode.BadRequest, noMeasurements.StatusCode);
+
+        using var outOfRange = await SendJsonAsync(
+            "/Products/1/SizeRecommendation",
+            new { chest = 201 });
+        Assert.Equal(HttpStatusCode.BadRequest, outOfRange.StatusCode);
+
+        using var missingProduct = await SendJsonAsync(
+            "/Products/999/SizeRecommendation",
+            new { waist = 80 });
+        Assert.Equal(HttpStatusCode.NotFound, missingProduct.StatusCode);
+
+        using var noChart = await SendJsonAsync(
+            "/Products/1/SizeRecommendation",
+            new { chest = 95 });
+        Assert.Equal(HttpStatusCode.OK, noChart.StatusCode);
+        using var json = JsonDocument.Parse(await noChart.Content.ReadAsStringAsync());
+        Assert.Null(json.RootElement.GetProperty("recommendedSize").GetString());
+        Assert.Equal("Таблица размеров для этой модели ещё не заполнена.",
+            json.RootElement.GetProperty("message").GetString());
+
+        await using var anonymousFactory = new TestApplicationFactory(
+            $"Data Source={_databasePath}",
+            isAdmin: false,
+            isAuthenticated: false);
+        using var anonymousClient = anonymousFactory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        using var anonymousResponse = await anonymousClient.PostAsync(
+            "/Products/1/SizeRecommendation",
+            new StringContent("""{"chest":95}""", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, anonymousResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_can_create_update_and_delete_product_size_guides()
+    {
+        var create = await PostFormAsync("/Admin/Products/1/SizeGuides", SizeGuideForm("m"));
+        Assert.Equal(HttpStatusCode.OK, create.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var guide = await db.ProductSizeGuides.SingleAsync();
+            Assert.Equal("M", guide.Size);
+            Assert.Equal(90m, guide.ChestMin);
+            Assert.Equal(100m, guide.ChestMax);
+        }
+
+        var duplicate = await PostFormAsync("/Admin/Products/1/SizeGuides", SizeGuideForm("M"));
+        Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert.Single(await db.ProductSizeGuides.ToListAsync());
+            var guide = await db.ProductSizeGuides.SingleAsync();
+            var update = SizeGuideForm("L");
+            update["ChestMin"] = "95";
+            update["ChestMax"] = "105";
+            var updateResponse = await PostFormAsync(
+                $"/Admin/Products/1/SizeGuides/{guide.Id}/Update",
+                update);
+            Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var guide = await db.ProductSizeGuides.SingleAsync();
+            Assert.Equal("L", guide.Size);
+            Assert.Equal(95m, guide.ChestMin);
+            var deleteResponse = await PostFormAsync(
+                $"/Admin/Products/1/SizeGuides/{guide.Id}/Delete");
+            Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+        }
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await verifyDb.ProductSizeGuides.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Admin_cannot_save_invalid_or_reversed_size_measurements()
+    {
+        var invalid = SizeGuideForm("XL");
+        invalid["ChestMin"] = "110";
+        invalid["ChestMax"] = "90";
+        var response = await PostFormAsync("/Admin/Products/1/SizeGuides", invalid);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await db.ProductSizeGuides.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Database_rejects_invalid_size_guide_ranges()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        db.ProductSizeGuides.Add(new ProductSizeGuide
+        {
+            ProductId = 1,
+            Size = "INVALID",
+            ChestMin = 110,
+            ChestMax = 90,
+            WaistMin = 70,
+            WaistMax = 80,
+            HipsMin = 90,
+            HipsMax = 100
+        });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
     public async Task Sales_report_requires_admin_role()
     {
         await using var nonAdminFactory = new TestApplicationFactory($"Data Source={_databasePath}", isAdmin: false);
@@ -750,7 +911,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(5, await GetStockAsync(secondVariantId));
     }
 
-    private async Task<int> CreateVariantAsync(int stock)
+    private async Task<int> CreateVariantAsync(int stock, string size = "M")
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -758,7 +919,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         {
             ProductId = 1,
             Sku = $"TEST-{Guid.NewGuid():N}",
-            Size = "M",
+            Size = size,
             Color = "Чёрный",
             Stock = stock
         };
@@ -766,6 +927,44 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         await db.SaveChangesAsync();
         return variant.Id;
     }
+
+    private async Task<int> CreateSizeGuideAsync(
+        string size,
+        decimal chestMin,
+        decimal chestMax,
+        decimal waistMin,
+        decimal waistMax,
+        decimal hipsMin,
+        decimal hipsMax)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var guide = new ProductSizeGuide
+        {
+            ProductId = 1,
+            Size = size,
+            ChestMin = chestMin,
+            ChestMax = chestMax,
+            WaistMin = waistMin,
+            WaistMax = waistMax,
+            HipsMin = hipsMin,
+            HipsMax = hipsMax
+        };
+        db.ProductSizeGuides.Add(guide);
+        await db.SaveChangesAsync();
+        return guide.Id;
+    }
+
+    private static Dictionary<string, string> SizeGuideForm(string size) => new()
+    {
+        ["Size"] = size,
+        ["ChestMin"] = "90",
+        ["ChestMax"] = "100",
+        ["WaistMin"] = "70",
+        ["WaistMax"] = "80",
+        ["HipsMin"] = "90",
+        ["HipsMax"] = "100"
+    };
 
     private async Task<int> CreateOrderAsync(int variantId, int quantity)
     {
@@ -858,7 +1057,10 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         return await db.Orders.Where(order => order.Id == orderId).Select(order => order.PaymentStatus).SingleAsync();
     }
 
-    private sealed class TestApplicationFactory(string connectionString, bool isAdmin = true) : WebApplicationFactory<Program>
+    private sealed class TestApplicationFactory(
+        string connectionString,
+        bool isAdmin = true,
+        bool isAuthenticated = true) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -883,7 +1085,11 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
                     })
                     .AddScheme<TestAuthenticationOptions, TestAuthenticationHandler>(
                         TestAuthenticationHandler.SchemeName,
-                        options => options.IsAdmin = isAdmin);
+                        options =>
+                        {
+                            options.IsAdmin = isAdmin;
+                            options.IsAuthenticated = isAuthenticated;
+                        });
             });
         }
     }
@@ -978,6 +1184,9 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
 
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
+            if (!Options.IsAuthenticated)
+                return Task.FromResult(AuthenticateResult.NoResult());
+
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, TestUserId),
@@ -995,5 +1204,6 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     private sealed class TestAuthenticationOptions : AuthenticationSchemeOptions
     {
         public bool IsAdmin { get; set; }
+        public bool IsAuthenticated { get; set; } = true;
     }
 }

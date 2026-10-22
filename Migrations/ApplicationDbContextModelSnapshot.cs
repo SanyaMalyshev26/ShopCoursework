@@ -412,6 +412,53 @@ namespace ShopCoursework.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ShopCoursework.Models.ProductSizeGuide", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("ChestMax")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("ChestMin")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("HipsMax")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("HipsMin")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Size")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("WaistMax")
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("WaistMin")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId", "Size")
+                        .IsUnique();
+
+                    b.ToTable("ProductSizeGuides", t =>
+                        {
+                            t.HasCheckConstraint("CK_ProductSizeGuides_ChestRange", "CAST(\"ChestMin\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"ChestMax\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"ChestMin\" AS REAL) <= CAST(\"ChestMax\" AS REAL)");
+
+                            t.HasCheckConstraint("CK_ProductSizeGuides_HipsRange", "CAST(\"HipsMin\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"HipsMax\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"HipsMin\" AS REAL) <= CAST(\"HipsMax\" AS REAL)");
+
+                            t.HasCheckConstraint("CK_ProductSizeGuides_WaistRange", "CAST(\"WaistMin\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"WaistMax\" AS REAL) BETWEEN 30 AND 200 AND CAST(\"WaistMin\" AS REAL) <= CAST(\"WaistMax\" AS REAL)");
+                        });
+                });
+
             modelBuilder.Entity("ShopCoursework.Models.ProductVariant", b =>
                 {
                     b.Property<int>("Id")
@@ -543,6 +590,17 @@ namespace ShopCoursework.Migrations
                     b.Navigation("ProductVariant");
                 });
 
+            modelBuilder.Entity("ShopCoursework.Models.ProductSizeGuide", b =>
+                {
+                    b.HasOne("ShopCoursework.Models.Product", "Product")
+                        .WithMany("SizeGuides")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("ShopCoursework.Models.ProductVariant", b =>
                 {
                     b.HasOne("ShopCoursework.Models.Product", "Product")
@@ -561,6 +619,8 @@ namespace ShopCoursework.Migrations
 
             modelBuilder.Entity("ShopCoursework.Models.Product", b =>
                 {
+                    b.Navigation("SizeGuides");
+
                     b.Navigation("Variants");
                 });
 #pragma warning restore 612, 618

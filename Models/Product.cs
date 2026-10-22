@@ -17,4 +17,5 @@ public class Product
     [StringLength(2048)]
     public string ImageUrl { get; set; } = "https://placehold.co/300x250";
     public List<ProductVariant> Variants { get; set; } = new();
+    public List<ProductSizeGuide> SizeGuides { get; set; } = new();
 }

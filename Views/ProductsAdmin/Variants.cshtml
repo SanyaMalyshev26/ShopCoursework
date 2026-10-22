@@ -12,7 +12,10 @@
             <h2 class="mb-0">Варианты товара</h2>
             <p class="text-muted mb-0">@Model.Name</p>
         </div>
-        <a href="/Admin/Products/Edit/@Model.Id" class="btn btn-outline-secondary">Изменить товар</a>
+        <div class="d-flex gap-2">
+            <a href="/Admin/Products/@Model.Id/SizeGuides" class="btn btn-outline-primary">Таблица размеров</a>
+            <a href="/Admin/Products/Edit/@Model.Id" class="btn btn-outline-secondary">Изменить товар</a>
+        </div>
     </div>
 
     @if (TempData["Message"] != null)

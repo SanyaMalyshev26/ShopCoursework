@@ -178,6 +178,104 @@ public class ProductsAdminController : Controller
         return View("Variants", product);
     }
 
+    [HttpGet("{id:int}/SizeGuides")]
+    public async Task<IActionResult> SizeGuides(int id)
+    {
+        var product = await _db.Products
+            .Include(item => item.SizeGuides.OrderBy(guide => guide.Size))
+            .SingleOrDefaultAsync(item => item.Id == id);
+        if (product == null) return NotFound();
+
+        return View(product);
+    }
+
+    [HttpPost("{id:int}/SizeGuides")]
+    public async Task<IActionResult> AddSizeGuide(int id, ProductSizeGuideInput input)
+    {
+        if (!await _db.Products.AnyAsync(product => product.Id == id))
+            return NotFound();
+
+        input.Size = input.Size?.Trim().ToUpperInvariant() ?? "";
+        if (!ModelState.IsValid || string.IsNullOrWhiteSpace(input.Size))
+        {
+            TempData["Error"] = "Проверьте размер и диапазоны мерок (30–200 см; минимум не больше максимума).";
+            return RedirectToAction(nameof(SizeGuides), new { id });
+        }
+
+        if (await _db.ProductSizeGuides.AnyAsync(guide =>
+                guide.ProductId == id && guide.Size == input.Size))
+        {
+            TempData["Error"] = $"Таблица для размера {input.Size} уже существует.";
+            return RedirectToAction(nameof(SizeGuides), new { id });
+        }
+
+        _db.ProductSizeGuides.Add(CreateSizeGuide(id, input));
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception) when (
+            exception.GetBaseException() is SqliteException { SqliteExtendedErrorCode: 2067 })
+        {
+            TempData["Error"] = $"Таблица для размера {input.Size} уже существует.";
+            return RedirectToAction(nameof(SizeGuides), new { id });
+        }
+
+        TempData["Message"] = $"Таблица размера {input.Size} добавлена.";
+        return RedirectToAction(nameof(SizeGuides), new { id });
+    }
+
+    [HttpPost("{id:int}/SizeGuides/{guideId:int}/Update")]
+    public async Task<IActionResult> UpdateSizeGuide(int id, int guideId, ProductSizeGuideInput input)
+    {
+        var guide = await _db.ProductSizeGuides
+            .SingleOrDefaultAsync(item => item.Id == guideId && item.ProductId == id);
+        if (guide == null) return NotFound();
+
+        input.Size = input.Size?.Trim().ToUpperInvariant() ?? "";
+        if (!ModelState.IsValid || string.IsNullOrWhiteSpace(input.Size))
+        {
+            TempData["Error"] = "Проверьте размер и диапазоны мерок (30–200 см; минимум не больше максимума).";
+            return RedirectToAction(nameof(SizeGuides), new { id });
+        }
+
+        if (await _db.ProductSizeGuides.AnyAsync(item =>
+                item.ProductId == id && item.Id != guideId && item.Size == input.Size))
+        {
+            TempData["Error"] = $"Таблица для размера {input.Size} уже существует.";
+            return RedirectToAction(nameof(SizeGuides), new { id });
+        }
+
+        guide.Size = input.Size;
+        CopyMeasurements(guide, input);
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception) when (
+            exception.GetBaseException() is SqliteException { SqliteExtendedErrorCode: 2067 })
+        {
+            TempData["Error"] = $"Таблица для размера {input.Size} уже существует.";
+            return RedirectToAction(nameof(SizeGuides), new { id });
+        }
+
+        TempData["Message"] = $"Таблица размера {input.Size} сохранена.";
+        return RedirectToAction(nameof(SizeGuides), new { id });
+    }
+
+    [HttpPost("{id:int}/SizeGuides/{guideId:int}/Delete")]
+    public async Task<IActionResult> DeleteSizeGuide(int id, int guideId)
+    {
+        var guide = await _db.ProductSizeGuides
+            .SingleOrDefaultAsync(item => item.Id == guideId && item.ProductId == id);
+        if (guide == null) return NotFound();
+
+        _db.ProductSizeGuides.Remove(guide);
+        await _db.SaveChangesAsync();
+        TempData["Message"] = $"Таблица размера {guide.Size} удалена.";
+        return RedirectToAction(nameof(SizeGuides), new { id });
+    }
+
     [HttpPost("{id:int}/Variants")]
     public async Task<IActionResult> AddVariant(int id, ProductVariant input)
     {
@@ -309,6 +407,27 @@ public class ProductsAdminController : Controller
         }
 
         return true;
+    }
+
+    private static ProductSizeGuide CreateSizeGuide(int productId, ProductSizeGuideInput input)
+    {
+        var guide = new ProductSizeGuide
+        {
+            ProductId = productId,
+            Size = input.Size
+        };
+        CopyMeasurements(guide, input);
+        return guide;
+    }
+
+    private static void CopyMeasurements(ProductSizeGuide guide, ProductSizeGuideInput input)
+    {
+        guide.ChestMin = input.ChestMin;
+        guide.ChestMax = input.ChestMax;
+        guide.WaistMin = input.WaistMin;
+        guide.WaistMax = input.WaistMax;
+        guide.HipsMin = input.HipsMin;
+        guide.HipsMax = input.HipsMax;
     }
 
     private static bool IsAllowedImageUrl(string? imageUrl)

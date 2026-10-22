@@ -38,6 +38,28 @@
                                 </option>
                             }
                         </select>
+                        <details class="mb-2">
+                            <summary class="small">Подобрать размер</summary>
+                            <form class="size-recommendation-form mt-2"
+                                  data-url="/Products/@p.Id/SizeRecommendation">
+                                <p class="small text-muted mb-2">
+                                    Введите известные мерки в сантиметрах. Данные не сохраняются.
+                                </p>
+                                <label class="form-label small mb-1" for="chest-@p.Id">Грудь, см</label>
+                                <input id="chest-@p.Id" class="form-control form-control-sm mb-2"
+                                       type="number" min="30" max="200" step="0.1" data-measure="chest">
+                                <label class="form-label small mb-1" for="waist-@p.Id">Талия, см</label>
+                                <input id="waist-@p.Id" class="form-control form-control-sm mb-2"
+                                       type="number" min="30" max="200" step="0.1" data-measure="waist">
+                                <label class="form-label small mb-1" for="hips-@p.Id">Бёдра, см</label>
+                                <input id="hips-@p.Id" class="form-control form-control-sm mb-2"
+                                       type="number" min="30" max="200" step="0.1" data-measure="hips">
+                                <button type="submit" class="btn btn-outline-secondary btn-sm w-100">
+                                    Узнать размер
+                                </button>
+                                <div class="size-recommendation-result small mt-2" role="status" aria-live="polite"></div>
+                            </form>
+                        </details>
                         <button class="btn btn-primary w-100 add-to-cart" disabled
                                 data-id="@p.Id"
                                 data-name="@p.Name"
@@ -50,3 +72,7 @@
         }
     </div>
 </section>
+
+@section Scripts {
+    <script src="~/js/size-recommendation.js" asp-append-version="true"></script>
+}

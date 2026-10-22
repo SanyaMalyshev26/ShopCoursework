@@ -1,0 +1,131 @@
+@model ShopCoursework.Models.Product
+@{
+    ViewData["Title"] = $"Размерная таблица: {Model.Name}";
+}
+
+<main class="container my-5">
+    <div class="mb-4">
+        <a href="/Admin/Products" class="btn btn-link px-0">← К товарам</a>
+        <h2 class="mb-1">Таблица размеров</h2>
+        <p class="text-muted">@Model.Name</p>
+    </div>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">@TempData["Error"]</div>
+    }
+
+    <p class="text-muted">
+        Укажите диапазоны мерок тела в сантиметрах для каждого размера этой модели.
+        Рекомендация использует только введённые покупателем мерки и доступные активные варианты.
+    </p>
+
+    <div class="table-responsive bg-white rounded shadow-sm p-3 mb-4">
+        <table class="table align-middle">
+            <thead>
+                <tr>
+                    <th>Размер</th>
+                    <th>Грудь, см</th>
+                    <th>Талия, см</th>
+                    <th>Бёдра, см</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var guide in Model.SizeGuides)
+                {
+                    <tr>
+                        <td>
+                            <form id="size-guide-@guide.Id" method="post"
+                                  action="/Admin/Products/@Model.Id/SizeGuides/@guide.Id/Update"
+                                  asp-antiforgery="true"></form>
+                            <input form="size-guide-@guide.Id" name="Size" value="@guide.Size"
+                                   class="form-control" maxlength="32" required>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <input form="size-guide-@guide.Id" name="ChestMin" type="number" step="0.1"
+                                       min="30" max="200" value="@guide.ChestMin" class="form-control" aria-label="Грудь от">
+                                <input form="size-guide-@guide.Id" name="ChestMax" type="number" step="0.1"
+                                       min="30" max="200" value="@guide.ChestMax" class="form-control" aria-label="Грудь до">
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <input form="size-guide-@guide.Id" name="WaistMin" type="number" step="0.1"
+                                       min="30" max="200" value="@guide.WaistMin" class="form-control" aria-label="Талия от">
+                                <input form="size-guide-@guide.Id" name="WaistMax" type="number" step="0.1"
+                                       min="30" max="200" value="@guide.WaistMax" class="form-control" aria-label="Талия до">
+                            </div>
+                        </td>
+                        <td>
+                            <div class="d-flex gap-1">
+                                <input form="size-guide-@guide.Id" name="HipsMin" type="number" step="0.1"
+                                       min="30" max="200" value="@guide.HipsMin" class="form-control" aria-label="Бёдра от">
+                                <input form="size-guide-@guide.Id" name="HipsMax" type="number" step="0.1"
+                                       min="30" max="200" value="@guide.HipsMax" class="form-control" aria-label="Бёдра до">
+                            </div>
+                        </td>
+                        <td class="text-nowrap">
+                            <button form="size-guide-@guide.Id" type="submit" class="btn btn-sm btn-outline-primary">
+                                Сохранить
+                            </button>
+                            <form method="post" action="/Admin/Products/@Model.Id/SizeGuides/@guide.Id/Delete"
+                                  asp-antiforgery="true" class="d-inline"
+                                  onsubmit="return confirm('Удалить таблицу размера @guide.Size?');">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                @if (Model.SizeGuides.Count == 0)
+                {
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            Таблица размеров ещё не заполнена.
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <section class="bg-white rounded shadow-sm p-4">
+        <h3 class="h5 mb-3">Добавить размер</h3>
+        <form method="post" action="/Admin/Products/@Model.Id/SizeGuides" asp-antiforgery="true"
+              class="row g-3">
+            <div class="col-md-2">
+                <label for="guideSize" class="form-label">Размер</label>
+                <input id="guideSize" name="Size" class="form-control" maxlength="32" placeholder="M" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Грудь, см (от / до)</label>
+                <div class="d-flex gap-2">
+                    <input name="ChestMin" type="number" step="0.1" min="30" max="200" class="form-control" required>
+                    <input name="ChestMax" type="number" step="0.1" min="30" max="200" class="form-control" required>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Талия, см (от / до)</label>
+                <div class="d-flex gap-2">
+                    <input name="WaistMin" type="number" step="0.1" min="30" max="200" class="form-control" required>
+                    <input name="WaistMax" type="number" step="0.1" min="30" max="200" class="form-control" required>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Бёдра, см (от / до)</label>
+                <div class="d-flex gap-2">
+                    <input name="HipsMin" type="number" step="0.1" min="30" max="200" class="form-control" required>
+                    <input name="HipsMax" type="number" step="0.1" min="30" max="200" class="form-control" required>
+                </div>
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Добавить в таблицу</button>
+            </div>
+        </form>
+    </section>
+</main>
