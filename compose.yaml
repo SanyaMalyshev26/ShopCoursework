@@ -37,6 +37,7 @@ services:
       Store__Name: "${STORE_NAME:-ShopCoursework}"
       Store__CurrencyCode: "${STORE_CURRENCY_CODE:-RUB}"
       Store__Culture: "${STORE_CULTURE:-ru-RU}"
+      Inventory__LowStockThreshold: "${INVENTORY_LOW_STOCK_THRESHOLD:-5}"
     volumes:
       - shop_data:/app/data
       - shop_uploads:/app/wwwroot/uploads

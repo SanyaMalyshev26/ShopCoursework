@@ -241,6 +241,45 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Admin_product_list_highlights_low_and_out_of_stock_active_variants()
+    {
+        var lowStockVariantId = await CreateVariantAsync(stock: 2, size: "M");
+        var outOfStockVariantId = await CreateVariantAsync(stock: 0, size: "L");
+        var healthyVariantId = await CreateVariantAsync(stock: 4, size: "XL");
+        string lowStockSku;
+        string outOfStockSku;
+        string healthySku;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            lowStockSku = await db.ProductVariants
+                .Where(variant => variant.Id == lowStockVariantId)
+                .Select(variant => variant.Sku)
+                .SingleAsync();
+            outOfStockSku = await db.ProductVariants
+                .Where(variant => variant.Id == outOfStockVariantId)
+                .Select(variant => variant.Sku)
+                .SingleAsync();
+            var healthyVariant = await db.ProductVariants.SingleAsync(variant => variant.Id == healthyVariantId);
+            healthySku = healthyVariant.Sku;
+            healthyVariant.IsActive = false;
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync("/Admin/Products");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Низкий остаток (до 3 шт.):", html);
+        Assert.Contains("Нет в наличии:", html);
+        Assert.Contains("<strong>1</strong> SKU", html);
+        Assert.Contains("<strong>1</strong> активных SKU", html);
+        Assert.Contains($"{lowStockSku} (2)", html);
+        Assert.Contains(outOfStockSku, html);
+        Assert.DoesNotContain(healthySku, html);
+    }
+
+    [Fact]
     public async Task Readiness_endpoint_reports_database_availability()
     {
         var response = await _client.GetAsync("/health/ready");
@@ -430,8 +469,23 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Contains("Выручка", html);
         Assert.Contains("3\u00a0500,00", html);
         Assert.Contains("Джинсы", html);
+        Assert.Contains("Дополнительная аналитика", html);
+        Assert.Contains("Средний чек", html);
+        Assert.Contains("Рост", html);
+        Assert.Contains("Доля топ-10 товаров", html);
         Assert.Contains($"href=\"/Admin/Analytics/Sales/Csv?from={reportDate}&to={reportDate}\"", html);
         Assert.Contains($"value=\"{reportDate}\"", html);
+
+        var analyticsClient = Assert.IsType<TestAnalyticsProcessingClient>(
+            _factory.Services.GetRequiredService<IAnalyticsProcessingClient>());
+        analyticsClient.IsUnavailable = true;
+        var degradedResponse = await _client.GetAsync(
+            $"/Admin/Analytics/Sales/Page?from={reportDate}&to={reportDate}");
+        var degradedHtml = WebUtility.HtmlDecode(await degradedResponse.Content.ReadAsStringAsync());
+        analyticsClient.IsUnavailable = false;
+        Assert.Equal(HttpStatusCode.OK, degradedResponse.StatusCode);
+        Assert.Contains("временно недоступны", degradedHtml);
+        Assert.Contains("Отчёт по продажам", degradedHtml);
 
         var invalidPeriod = await _client.GetAsync(
             "/Admin/Analytics/Sales/Page?from=2026-02-02&to=2026-02-01");
@@ -1638,7 +1692,8 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["AdminEmail"] = "",
-                    ["ConnectionStrings:DefaultConnection"] = connectionString
+                    ["ConnectionStrings:DefaultConnection"] = connectionString,
+                    ["Inventory:LowStockThreshold"] = "3"
                 });
             });
 
@@ -1681,11 +1736,15 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     private sealed class TestAnalyticsProcessingClient : IAnalyticsProcessingClient
     {
         public SalesReport? LastReport { get; private set; }
+        public bool IsUnavailable { get; set; }
 
         public Task<SalesInsights> AnalyzeSalesAsync(
             SalesReport report,
             CancellationToken cancellationToken)
         {
+            if (IsUnavailable)
+                throw new HttpRequestException("Test analytics service is unavailable.");
+
             LastReport = report;
             return Task.FromResult(new SalesInsights(
                 report.CurrencyCode,

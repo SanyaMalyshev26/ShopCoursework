@@ -1,19 +1,58 @@
 @using System.Globalization
-@model ShopCoursework.Services.Analytics.SalesReport
+@model ShopCoursework.Models.SalesDashboardViewModel
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "Отчёт по продажам";
     var culture = CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
+    var report = Model.Report;
+    var insights = Model.Insights;
+    var averageOrderValue = decimal.TryParse(
+        insights?.AverageOrderValue,
+        NumberStyles.Number,
+        CultureInfo.InvariantCulture,
+        out var parsedAverageOrderValue)
+        ? parsedAverageOrderValue.ToString("C2", culture)
+        : null;
+    var averageDailyRevenue = decimal.TryParse(
+        insights?.AverageDailyRevenue,
+        NumberStyles.Number,
+        CultureInfo.InvariantCulture,
+        out var parsedAverageDailyRevenue)
+        ? parsedAverageDailyRevenue.ToString("C2", culture)
+        : null;
+    var revenueChange = decimal.TryParse(
+        insights?.RevenueChangePercent,
+        NumberStyles.Number,
+        CultureInfo.InvariantCulture,
+        out var parsedRevenueChange)
+        ? parsedRevenueChange.ToString("0.0", culture) + "%"
+        : null;
+    var topProductsShare = decimal.TryParse(
+        insights?.TopProductsRevenueSharePercent,
+        NumberStyles.Number,
+        CultureInfo.InvariantCulture,
+        out var parsedTopProductsShare)
+        ? parsedTopProductsShare.ToString("0.0", culture) + "%"
+        : null;
+    var revenueTrendText = insights?.RevenueTrend switch
+    {
+        "up" => "Рост",
+        "down" => "Снижение",
+        "unchanged" => "Без изменений",
+        "new_sales" => "Появились продажи",
+        "insufficient_data" => "Недостаточно данных",
+        _ => null
+    };
 }
 
 <main class="container my-5">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
         <div>
             <h1 class="h2 mb-1">Отчёт по продажам</h1>
-            <p class="text-muted mb-0">@Model.From — @Model.To · @Model.CurrencyCode</p>
+            <p class="text-muted mb-0">@report.From — @report.To · @report.CurrencyCode</p>
         </div>
         <a class="btn btn-success"
-           href="/Admin/Analytics/Sales/Csv?from=@Model.From&amp;to=@Model.To">
+           href="/Admin/Analytics/Sales/Csv?from=@report.From&amp;to=@report.To">
             Скачать CSV
         </a>
     </div>
@@ -22,11 +61,11 @@
           class="row g-3 align-items-end bg-white rounded shadow-sm p-3 mb-4">
         <div class="col-sm-5">
             <label for="reportFrom" class="form-label">С даты (UTC)</label>
-            <input id="reportFrom" name="from" type="date" class="form-control" value="@Model.From" required>
+            <input id="reportFrom" name="from" type="date" class="form-control" value="@report.From" required>
         </div>
         <div class="col-sm-5">
             <label for="reportTo" class="form-label">По дату включительно (UTC)</label>
-            <input id="reportTo" name="to" type="date" class="form-control" value="@Model.To" required>
+            <input id="reportTo" name="to" type="date" class="form-control" value="@report.To" required>
         </div>
         <div class="col-sm-2">
             <button type="submit" class="btn btn-primary w-100">Показать</button>
@@ -38,32 +77,85 @@
         <div class="col-6 col-lg-3">
             <div class="card h-100"><div class="card-body">
                 <div class="small text-muted">Заказов</div>
-                <div class="fs-3 fw-semibold">@Model.Summary.Orders</div>
+                <div class="fs-3 fw-semibold">@report.Summary.Orders</div>
             </div></div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="card h-100"><div class="card-body">
                 <div class="small text-muted">Выручка</div>
-                <div class="fs-3 fw-semibold">@Model.Summary.Revenue.ToString("C2", culture)</div>
+                <div class="fs-3 fw-semibold">@report.Summary.Revenue.ToString("C2", culture)</div>
             </div></div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="card h-100"><div class="card-body">
                 <div class="small text-muted">Оплачено</div>
-                <div class="fs-3 fw-semibold">@Model.Summary.PaidRevenue.ToString("C2", culture)</div>
+                <div class="fs-3 fw-semibold">@report.Summary.PaidRevenue.ToString("C2", culture)</div>
             </div></div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="card h-100"><div class="card-body">
                 <div class="small text-muted">Продано единиц</div>
-                <div class="fs-3 fw-semibold">@Model.Summary.UnitsSold</div>
+                <div class="fs-3 fw-semibold">@report.Summary.UnitsSold</div>
             </div></div>
         </div>
     </section>
 
+    @if (Model.InsightsError != null)
+    {
+        <div class="alert alert-warning" role="status">@Model.InsightsError</div>
+    }
+    else if (insights != null)
+    {
+        <section class="bg-white rounded shadow-sm p-3 mb-4" aria-label="Дополнительная аналитика">
+            <h2 class="h4">Дополнительная аналитика</h2>
+            <div class="row g-3">
+                @if (averageOrderValue != null)
+                {
+                    <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100">
+                        <div class="small text-muted">Средний чек</div>
+                        <strong>@averageOrderValue</strong>
+                    </div></div>
+                }
+                @if (averageDailyRevenue != null)
+                {
+                    <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100">
+                        <div class="small text-muted">Средняя выручка в день</div>
+                        <strong>@averageDailyRevenue</strong>
+                    </div></div>
+                }
+                @if (insights.BestSalesDay != null)
+                {
+                    <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100">
+                        <div class="small text-muted">Лучший день</div>
+                        <strong>@insights.BestSalesDay.Date</strong>
+                        <div>@insights.BestSalesDay.Revenue @report.CurrencyCode</div>
+                    </div></div>
+                }
+                @if (revenueTrendText != null)
+                {
+                    <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100">
+                        <div class="small text-muted">Изменение дневной выручки</div>
+                        <strong>@revenueTrendText</strong>
+                        @if (revenueChange != null)
+                        {
+                            <div>@revenueChange</div>
+                        }
+                    </div></div>
+                }
+                @if (topProductsShare != null)
+                {
+                    <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100">
+                        <div class="small text-muted">Доля топ-10 товаров</div>
+                        <strong>@topProductsShare</strong>
+                    </div></div>
+                }
+            </div>
+        </section>
+    }
+
     <section class="bg-white rounded shadow-sm p-3 mb-4">
         <h2 class="h4">Продажи по дням</h2>
-        @if (Model.Daily.Count == 0)
+        @if (report.Daily.Count == 0)
         {
             <p class="text-muted mb-0">За выбранный период заказов нет.</p>
         }
@@ -73,7 +165,7 @@
                 <table class="table table-striped align-middle mb-0">
                     <thead><tr><th>Дата (UTC)</th><th>Заказов</th><th>Выручка</th><th>Единиц</th></tr></thead>
                     <tbody>
-                    @foreach (var day in Model.Daily)
+                    @foreach (var day in report.Daily)
                     {
                         <tr>
                             <td>@day.Date</td>
@@ -90,7 +182,7 @@
 
     <section class="bg-white rounded shadow-sm p-3">
         <h2 class="h4">Популярные товары</h2>
-        @if (Model.TopProducts.Count == 0)
+        @if (report.TopProducts.Count == 0)
         {
             <p class="text-muted mb-0">Данных о продажах нет.</p>
         }
@@ -100,7 +192,7 @@
                 <table class="table table-striped align-middle mb-0">
                     <thead><tr><th>Товар</th><th>Продано</th><th>Выручка</th></tr></thead>
                     <tbody>
-                    @foreach (var product in Model.TopProducts)
+                    @foreach (var product in report.TopProducts)
                     {
                         <tr>
                             <td>@product.ProductName</td>

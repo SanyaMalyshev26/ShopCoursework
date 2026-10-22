@@ -18,17 +18,22 @@ public class ProductsAdminController : Controller
     private readonly IImageProcessingClient _imageProcessingClient;
     private readonly StockNotificationService _stockNotificationService;
     private readonly ILogger<ProductsAdminController> _logger;
+    private readonly int _lowStockThreshold;
 
     public ProductsAdminController(
         ApplicationDbContext db,
         IImageProcessingClient imageProcessingClient,
         StockNotificationService stockNotificationService,
-        ILogger<ProductsAdminController> logger)
+        ILogger<ProductsAdminController> logger,
+        IConfiguration configuration)
     {
         _db = db;
         _imageProcessingClient = imageProcessingClient;
         _stockNotificationService = stockNotificationService;
         _logger = logger;
+        _lowStockThreshold = configuration.GetValue<int?>("Inventory:LowStockThreshold") ?? 5;
+        if (_lowStockThreshold < 1)
+            throw new InvalidOperationException("Inventory:LowStockThreshold must be greater than zero.");
     }
 
     // Список товаров
@@ -39,7 +44,14 @@ public class ProductsAdminController : Controller
             .Include(product => product.Variants)
             .OrderBy(product => product.Id)
             .ToListAsync();
-        return View(products);
+        var activeVariants = products.SelectMany(product => product.Variants)
+            .Where(variant => variant.IsActive)
+            .ToList();
+        return View(new AdminProductsViewModel(
+            products,
+            _lowStockThreshold,
+            activeVariants.Count(variant => variant.Stock > 0 && variant.Stock <= _lowStockThreshold),
+            activeVariants.Count(variant => variant.Stock == 0)));
     }
 
     [HttpPost("Images")]

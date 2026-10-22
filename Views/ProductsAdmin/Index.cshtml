@@ -1,4 +1,4 @@
-@model List<ShopCoursework.Models.Product>
+@model ShopCoursework.Models.AdminProductsViewModel
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     ViewData["Title"] = "Админка: товары";
@@ -20,6 +20,19 @@
         <div class="alert alert-danger">@TempData["Error"]</div>
     }
 
+    <section class="row g-3 mb-4" aria-label="Состояние склада">
+        <div class="col-sm-6">
+            <div class="alert alert-warning mb-0">
+                Низкий остаток (до @Model.LowStockThreshold шт.): <strong>@Model.LowStockVariantCount</strong> SKU
+            </div>
+        </div>
+        <div class="col-sm-6">
+            <div class="alert alert-danger mb-0">
+                Нет в наличии: <strong>@Model.OutOfStockVariantCount</strong> активных SKU
+            </div>
+        </div>
+    </section>
+
     <div class="table-responsive bg-white rounded shadow-sm p-3">
         <table class="table align-middle mb-0">
             <thead>
@@ -34,7 +47,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (var p in Model)
+                @foreach (var p in Model.Products)
                 {
                     <tr>
                         <td><img src="@p.ImageUrl" alt="" width="50" height="50" class="rounded" style="object-fit:cover"></td>
@@ -44,6 +57,28 @@
                         <td>
                             <a href="/Admin/Products/@p.Id/Variants">@p.Variants.Count вариантов</a>
                             <span class="text-muted">· @p.Variants.Where(v => v.IsActive).Sum(v => v.Stock) шт.</span>
+                            @{
+                                var lowStockVariants = p.Variants
+                                    .Where(variant => variant.IsActive &&
+                                        variant.Stock > 0 &&
+                                        variant.Stock <= Model.LowStockThreshold)
+                                    .ToList();
+                                var outOfStockVariants = p.Variants
+                                    .Where(variant => variant.IsActive && variant.Stock == 0)
+                                    .ToList();
+                            }
+                            @if (lowStockVariants.Count > 0)
+                            {
+                                <div class="small text-warning-emphasis">
+                                    Мало: @string.Join(", ", lowStockVariants.Select(variant => $"{variant.Sku} ({variant.Stock})"))
+                                </div>
+                            }
+                            @if (outOfStockVariants.Count > 0)
+                            {
+                                <div class="small text-danger">
+                                    Нет: @string.Join(", ", outOfStockVariants.Select(variant => variant.Sku))
+                                </div>
+                            }
                             <br>
                             <a href="/Admin/Products/@p.Id/SizeGuides">Таблица размеров</a>
                         </td>

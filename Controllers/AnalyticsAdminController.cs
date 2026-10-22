@@ -62,7 +62,29 @@ public class AnalyticsAdminController : Controller
             return BadRequest(new { message = error });
         }
 
-        return View("Sales", await BuildReportAsync(startDate, endDate, cancellationToken));
+        var report = await BuildReportAsync(startDate, endDate, cancellationToken);
+        try
+        {
+            var insights = await _analyticsClient.AnalyzeSalesAsync(report, cancellationToken);
+            return View("Sales", new SalesDashboardViewModel(report, insights, null));
+        }
+        catch (AnalyticsProcessingException exception)
+        {
+            _logger.LogWarning(exception, "The sales insights are unavailable for the sales dashboard.");
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "The sales insights processor is unavailable for the sales dashboard.");
+        }
+        catch (TaskCanceledException exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(exception, "The sales insights processor timed out for the sales dashboard.");
+        }
+
+        return View("Sales", new SalesDashboardViewModel(
+            report,
+            null,
+            "Дополнительные аналитические показатели временно недоступны."));
     }
 
     [HttpGet("Sales/Csv")]
