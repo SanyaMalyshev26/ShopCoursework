@@ -17,6 +17,20 @@ public class ProductsController : Controller
         _db = db;
     }
 
+    [HttpGet("{productId:int}")]
+    public async Task<IActionResult> Details(int productId, CancellationToken cancellationToken)
+    {
+        var product = await _db.Products
+            .AsNoTracking()
+            .Include(item => item.Variants.Where(variant => variant.IsActive))
+            .Include(item => item.SizeGuides)
+            .SingleOrDefaultAsync(item => item.Id == productId, cancellationToken);
+        if (product == null)
+            return NotFound();
+
+        return View(product);
+    }
+
     [HttpPost("{productId:int}/SizeRecommendation")]
     [IgnoreAntiforgeryToken]
     public async Task<IActionResult> RecommendSize(

@@ -24,7 +24,10 @@
                 <div class="card h-100 product-card">
                     <img src="@p.ImageUrl" class="card-img-top" alt="@p.Name">
                     <div class="card-body d-flex flex-column">
-                        <h5 class="card-title">@p.Name</h5>
+                        <h5 class="card-title">
+                            <a class="text-decoration-none text-dark" href="/Products/@p.Id">@p.Name</a>
+                        </h5>
+                        <a href="/Products/@p.Id" class="btn btn-outline-secondary btn-sm mb-2">Подробнее о товаре</a>
                         <p class="card-text text-muted small">@p.Rating.ToString("0.##", currencyCulture) ★</p>
                         <p class="fw-bold fs-5 mt-auto mb-2">@p.Price.ToString("C0", currencyCulture)</p>
                         <label class="form-label small mt-2" for="variant-@p.Id">Размер и цвет</label>
@@ -33,6 +36,7 @@
                             @foreach (var variant in p.Variants.OrderBy(v => v.Size).ThenBy(v => v.Color))
                             {
                                 <option value="@variant.Id" data-stock="@variant.Stock"
+                                        data-size="@variant.Size" data-color="@variant.Color"
                                         disabled="@(variant.Stock == 0)">
                                     @variant.Size · @variant.Color — @(variant.Stock > 0 ? $"В наличии: {variant.Stock}" : "Нет в наличии")
                                 </option>

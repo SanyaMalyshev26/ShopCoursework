@@ -32,10 +32,22 @@ document.querySelectorAll('.size-recommendation-form').forEach((form) => {
                 return;
             }
 
+            const variantSelect = form.closest('.product-card')?.querySelector('.variant-select');
+            if (variantSelect) {
+                const matchingVariant = Array.from(variantSelect.options).find((option) =>
+                    option.dataset.size?.toUpperCase() === data.recommendedSize.toUpperCase() &&
+                    !option.disabled
+                );
+                if (matchingVariant) {
+                    variantSelect.value = matchingVariant.value;
+                    variantSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+
             const options = data.matchingSizes
                 .map((item) => `${item.size} (${item.availableStock} шт.)`)
                 .join(', ');
-            result.textContent = `Рекомендуем ${data.recommendedSize}. В наличии: ${data.availableStock}. ${data.message} Подходящие размеры: ${options}.`;
+            result.textContent = `Рекомендуем ${data.recommendedSize}. В наличии: ${data.availableStock}. Подходящие размеры: ${options}. Выбран доступный вариант; при необходимости измените цвет. ${data.message}`;
         } catch (error) {
             result.textContent = error.message || 'Сервис подбора временно недоступен.';
         }

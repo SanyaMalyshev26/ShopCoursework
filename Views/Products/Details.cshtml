@@ -1,0 +1,129 @@
+@using System.Globalization
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@model ShopCoursework.Models.Product
+@{
+    ViewData["Title"] = Model.Name;
+    var currencyCulture = CultureInfo.GetCultureInfo(Configuration["Store:Culture"] ?? "ru-RU");
+    var availableStock = Model.Variants.Where(variant => variant.IsActive).Sum(variant => variant.Stock);
+}
+
+<main class="container my-5">
+    <nav aria-label="Навигация">
+        <a href="/#catalog" class="btn btn-link px-0">← Вернуться в каталог</a>
+    </nav>
+
+    <article class="row g-4 g-lg-5 mt-1 product-card">
+        <div class="col-md-6">
+            <img src="@Model.ImageUrl" class="img-fluid rounded shadow-sm w-100"
+                 alt="@Model.Name" style="max-height:640px;object-fit:contain">
+        </div>
+
+        <div class="col-md-6">
+            <h1 class="mb-2">@Model.Name</h1>
+            <p class="text-muted mb-3">@Model.Rating.ToString("0.##", currencyCulture) ★</p>
+            <p class="fs-3 fw-bold">@Model.Price.ToString("C", currencyCulture)</p>
+
+            @if (!string.IsNullOrWhiteSpace(Model.Description))
+            {
+                <p class="product-description">@Model.Description</p>
+            }
+
+            <p class="small text-muted">
+                @(availableStock > 0 ? $"В наличии: {availableStock} шт." : "Сейчас нет в наличии")
+            </p>
+
+            @if (Model.Variants.Count > 0)
+            {
+                <label class="form-label fw-semibold" for="variant-@Model.Id">Размер и цвет</label>
+                <select id="variant-@Model.Id" class="form-select variant-select mb-3">
+                    <option value="">Выберите вариант</option>
+                    @foreach (var variant in Model.Variants
+                        .OrderBy(item => item.Size)
+                        .ThenBy(item => item.Color))
+                    {
+                        <option value="@variant.Id" data-stock="@variant.Stock"
+                                data-size="@variant.Size" data-color="@variant.Color"
+                                disabled="@(variant.Stock == 0)">
+                            @variant.Size · @variant.Color — @(variant.Stock > 0 ? $"В наличии: {variant.Stock}" : "Нет в наличии")
+                        </option>
+                    }
+                </select>
+
+                <button class="btn btn-primary btn-lg w-100 add-to-cart" disabled
+                        data-id="@Model.Id"
+                        data-name="@Model.Name"
+                        data-price="@Model.Price.ToString(CultureInfo.InvariantCulture)">
+                    В корзину
+                </button>
+            }
+            else
+            {
+                <div class="alert alert-secondary">Варианты товара пока не добавлены.</div>
+            }
+
+            <details class="mt-4">
+                <summary class="fw-semibold">Подобрать размер по меркам</summary>
+                <form class="size-recommendation-form mt-3"
+                      data-url="/Products/@Model.Id/SizeRecommendation">
+                    <p class="small text-muted">
+                        Укажите известные мерки в сантиметрах. Они не сохраняются.
+                        Подбор ориентировочный и не гарантирует посадку.
+                    </p>
+                    <div class="row g-2">
+                        <div class="col-sm-4">
+                            <label class="form-label small" for="chest-@Model.Id">Грудь, см</label>
+                            <input id="chest-@Model.Id" class="form-control" type="number"
+                                   min="30" max="200" step="0.1" data-measure="chest">
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label small" for="waist-@Model.Id">Талия, см</label>
+                            <input id="waist-@Model.Id" class="form-control" type="number"
+                                   min="30" max="200" step="0.1" data-measure="waist">
+                        </div>
+                        <div class="col-sm-4">
+                            <label class="form-label small" for="hips-@Model.Id">Бёдра, см</label>
+                            <input id="hips-@Model.Id" class="form-control" type="number"
+                                   min="30" max="200" step="0.1" data-measure="hips">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-outline-secondary mt-3">Подобрать размер</button>
+                    <div class="size-recommendation-result small mt-2" role="status" aria-live="polite"></div>
+                </form>
+            </details>
+
+            @if (Model.SizeGuides.Count > 0)
+            {
+                <details class="mt-3">
+                    <summary class="fw-semibold">Таблица мерок модели</summary>
+                    <div class="table-responsive mt-2">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Размер</th>
+                                    <th>Грудь, см</th>
+                                    <th>Талия, см</th>
+                                    <th>Бёдра, см</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var guide in Model.SizeGuides.OrderBy(item => item.Size))
+                                {
+                                    <tr>
+                                        <th scope="row">@guide.Size</th>
+                                        <td>@guide.ChestMin–@guide.ChestMax</td>
+                                        <td>@guide.WaistMin–@guide.WaistMax</td>
+                                        <td>@guide.HipsMin–@guide.HipsMax</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </details>
+            }
+        </div>
+    </article>
+</main>
+
+@section Scripts {
+    <script src="~/js/size-recommendation.js" asp-append-version="true"></script>
+}

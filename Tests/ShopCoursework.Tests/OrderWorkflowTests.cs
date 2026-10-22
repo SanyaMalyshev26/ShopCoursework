@@ -96,6 +96,51 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Product_details_page_shows_description_variants_and_size_recommendation()
+    {
+        await CreateVariantAsync(stock: 3, size: "M");
+        var inactiveVariantId = await CreateVariantAsync(stock: 5, size: "L");
+        await CreateSizeGuideAsync("M", 90, 100, 70, 80, 90, 100);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var product = await db.Products.SingleAsync(item => item.Id == 1);
+            product.Description = "Описание для страницы товара";
+            var inactiveVariant = await db.ProductVariants.SingleAsync(item => item.Id == inactiveVariantId);
+            inactiveVariant.IsActive = false;
+            await db.SaveChangesAsync();
+        }
+
+        var response = await _client.GetAsync("/Products/1");
+        var html = WebUtility.HtmlDecode(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("Описание для страницы товара", html);
+        Assert.Contains("Подобрать размер по меркам", html);
+        Assert.Contains("Таблица мерок модели", html);
+        Assert.Contains("data-size=\"M\"", html);
+        Assert.DoesNotContain($"value=\"{inactiveVariantId}\"", html);
+        Assert.Contains("add-to-cart", html);
+
+        var missing = await _client.GetAsync("/Products/999");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
+    public async Task Catalog_links_to_product_details_and_carries_variant_size_data()
+    {
+        await CreateVariantAsync(stock: 2, size: "S");
+
+        var html = WebUtility.HtmlDecode(await _client.GetStringAsync("/"));
+
+        Assert.Contains("href=\"/Products/1\"", html);
+        Assert.Contains("Подробнее о товаре", html);
+        Assert.Contains("data-size=\"S\"", html);
+        Assert.Contains("data-color=\"Чёрный\"", html);
+    }
+
+    [Fact]
     public async Task Readiness_endpoint_reports_database_availability()
     {
         var response = await _client.GetAsync("/health/ready");

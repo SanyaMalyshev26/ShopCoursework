@@ -39,8 +39,8 @@ document.querySelectorAll('.add-to-cart').forEach(btn => {
             window.cart.push({
                 variantId,
                 name,
-                size: option.textContent.split(' — ')[0].split(' · ')[0].trim(),
-                color: option.textContent.split(' — ')[0].split(' · ').slice(1).join(' · ').trim(),
+                size: option.dataset.size,
+                color: option.dataset.color,
                 price,
                 qty: 1,
                 stock
