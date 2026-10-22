@@ -20,6 +20,24 @@
         <div class="alert alert-warning">@TempData["Error"]</div>
     }
 
+    <section class="row g-3 mb-4" aria-label="Сводка по заказам">
+        <div class="col-sm-4">
+            <div class="alert alert-primary mb-0">
+                Новые заказы: <strong><span id="newOrderCount">@Model.NewOrderCount</span></strong>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="alert alert-info mb-0">
+                В обработке: <strong><span id="processingOrderCount">@Model.ProcessingOrderCount</span></strong>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="alert alert-warning mb-0">
+                Ожидают оплаты: <strong><span id="awaitingPaymentCount">@Model.AwaitingPaymentCount</span></strong>
+            </div>
+        </div>
+    </section>
+
     <form method="get" action="/Admin/Orders" class="row g-3 align-items-end mb-2">
         <div class="col-12 col-md-3">
             <label for="orderStatus" class="form-label">Статус заказа</label>

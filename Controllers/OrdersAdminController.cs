@@ -41,6 +41,21 @@ public class OrdersAdminController : Controller
             return BadRequest();
         }
 
+        var summary = await _db.Orders
+            .AsNoTracking()
+            .GroupBy(_ => 1)
+            .Select(orders => new
+            {
+                NewOrderCount = orders.Count(order => order.Status == OrderStatuses.New),
+                ProcessingOrderCount = orders.Count(order =>
+                    order.Status == OrderStatuses.Confirmed || order.Status == OrderStatuses.Shipped),
+                AwaitingPaymentCount = orders.Count(order =>
+                    order.Status == OrderStatuses.Delivered &&
+                    order.PaymentMethod == PaymentMethods.CashOnDelivery &&
+                    order.PaymentStatus == PaymentStatuses.Pending)
+            })
+            .SingleOrDefaultAsync();
+
         var query = FilterOrders(_db.Orders.AsNoTracking(), status, paymentStatus, search);
 
         var totalCount = await query.CountAsync();
@@ -63,7 +78,10 @@ public class OrdersAdminController : Controller
             PaymentStatus = paymentStatus ?? "",
             Search = search ?? "",
             Page = page,
-            TotalPages = totalPages
+            TotalPages = totalPages,
+            NewOrderCount = summary?.NewOrderCount ?? 0,
+            ProcessingOrderCount = summary?.ProcessingOrderCount ?? 0,
+            AwaitingPaymentCount = summary?.AwaitingPaymentCount ?? 0
         });
     }
 

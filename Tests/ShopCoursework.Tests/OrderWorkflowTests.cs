@@ -542,6 +542,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         var variantId = await CreateVariantAsync(stock: 3);
         var confirmedOrderId = await CreateOrderAsync(variantId, quantity: 1);
         var newOrderId = await CreateOrderAsync(variantId, quantity: 1);
+        var awaitingPaymentOrderId = await CreateOrderAsync(variantId, quantity: 1);
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -549,6 +550,8 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
             var confirmedOrder = await db.Orders.SingleAsync(order => order.Id == confirmedOrderId);
             confirmedOrder.Status = OrderStatuses.Confirmed;
             confirmedOrder.PaymentStatus = PaymentStatuses.Paid;
+            var awaitingPaymentOrder = await db.Orders.SingleAsync(order => order.Id == awaitingPaymentOrderId);
+            awaitingPaymentOrder.Status = OrderStatuses.Delivered;
             await db.SaveChangesAsync();
         }
 
@@ -564,6 +567,10 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Contains($"value=\"{OrderStatuses.Confirmed}\" selected", html);
         Assert.Contains($"value=\"{PaymentStatuses.Paid}\" selected", html);
         Assert.Contains($"value=\"{confirmedOrderId}\"", html);
+        Assert.Contains("<span id=\"newOrderCount\">1</span>", html);
+        Assert.Contains("<span id=\"processingOrderCount\">1</span>", html);
+        Assert.Contains("<span id=\"awaitingPaymentCount\">1</span>", html);
+        Assert.DoesNotContain($"<strong>#{awaitingPaymentOrderId}</strong>", html);
 
         var invalidFilter = await _client.GetAsync("/Admin/Orders?status=Unknown");
         Assert.Equal(HttpStatusCode.BadRequest, invalidFilter.StatusCode);

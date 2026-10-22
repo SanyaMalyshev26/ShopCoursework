@@ -8,6 +8,9 @@ public sealed class AdminOrdersViewModel
     public string Search { get; init; } = "";
     public int Page { get; init; }
     public int TotalPages { get; init; }
+    public int NewOrderCount { get; init; }
+    public int ProcessingOrderCount { get; init; }
+    public int AwaitingPaymentCount { get; init; }
 
     public static IReadOnlyList<string> StatusOptions { get; } =
     [
