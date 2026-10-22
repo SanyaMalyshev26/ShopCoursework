@@ -36,6 +36,7 @@ public class AccountController : Controller
             .Where(o => o.UserId == user!.Id)
             .Include(order => order.Items)
                 .ThenInclude(item => item.Product)
+            .Include(order => order.History.OrderBy(entry => entry.CreatedAt).ThenBy(entry => entry.Id))
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
         ViewBag.Addresses = await _db.Addresses

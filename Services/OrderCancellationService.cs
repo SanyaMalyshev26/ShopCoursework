@@ -38,6 +38,20 @@ public sealed class OrderCancellationService(ApplicationDbContext db)
                 : OrderCancellationResult.NotFound;
         }
 
+        var order = await db.Orders
+            .Where(candidate => candidate.Id == orderId)
+            .Select(candidate => new { candidate.Status, candidate.PaymentStatus })
+            .SingleAsync();
+        db.OrderHistory.Add(new OrderHistoryEntry
+        {
+            OrderId = orderId,
+            EventType = userId == null
+                ? OrderHistoryEventTypes.AdminCancelled
+                : OrderHistoryEventTypes.CustomerCancelled,
+            Status = order.Status,
+            PaymentStatus = order.PaymentStatus
+        });
+
         var items = await db.OrderItems
             .Where(item => item.OrderId == orderId && item.ProductVariantId != null)
             .Select(item => new { VariantId = item.ProductVariantId!.Value, item.Quantity })
@@ -56,6 +70,7 @@ public sealed class OrderCancellationService(ApplicationDbContext db)
                     $"Cannot restore stock for variant {item.VariantId} while cancelling order {orderId}.");
         }
 
+        await db.SaveChangesAsync();
         await transaction.CommitAsync();
         return OrderCancellationResult.Cancelled;
     }

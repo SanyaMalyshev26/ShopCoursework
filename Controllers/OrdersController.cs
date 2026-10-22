@@ -179,6 +179,12 @@ public class OrdersController : Controller
             }
 
             order.Total = order.Items.Sum(item => item.UnitPrice * item.Quantity);
+            order.History.Add(new OrderHistoryEntry
+            {
+                EventType = OrderHistoryEventTypes.Created,
+                Status = order.Status,
+                PaymentStatus = order.PaymentStatus
+            });
             _db.Orders.Add(order);
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();

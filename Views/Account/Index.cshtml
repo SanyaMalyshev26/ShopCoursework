@@ -135,6 +135,21 @@
         <td>
             <span class="badge bg-secondary">@o.Status</span>
             <div class="small text-muted mt-1">@o.PaymentMethod · @o.PaymentStatus</div>
+            @if (o.History.Count > 0)
+            {
+                <details class="mt-2">
+                    <summary class="small">История (@o.History.Count)</summary>
+                    <ul class="small text-muted ps-3 mt-2 mb-0">
+                        @foreach (var entry in o.History)
+                        {
+                            <li>
+                                @entry.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm") —
+                                @entry.EventType: @entry.Status · @entry.PaymentStatus
+                            </li>
+                        }
+                    </ul>
+                </details>
+            }
         </td>
         <td>
             @if (o.Status == ShopCoursework.Models.OrderStatuses.New ||

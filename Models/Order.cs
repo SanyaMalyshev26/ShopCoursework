@@ -16,4 +16,5 @@ public class Order
     public string? ShippingCity { get; set; }
     public string? ShippingStreet { get; set; }
     public List<OrderItem> Items { get; set; } = new();
+    public List<OrderHistoryEntry> History { get; set; } = new();
 }

@@ -18,6 +18,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<OrderHistoryEntry> OrderHistory => Set<OrderHistoryEntry>();
 
     public DbSet<Address> Addresses => Set<Address>();
 
@@ -37,6 +38,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         modelBuilder.Entity<Order>()
             .Property(order => order.CheckoutRequestHash)
             .HasMaxLength(64);
+        modelBuilder.Entity<OrderHistoryEntry>()
+            .Property(entry => entry.EventType)
+            .HasMaxLength(64);
+        modelBuilder.Entity<OrderHistoryEntry>()
+            .Property(entry => entry.Status)
+            .HasMaxLength(32);
+        modelBuilder.Entity<OrderHistoryEntry>()
+            .Property(entry => entry.PaymentStatus)
+            .HasMaxLength(32);
+        modelBuilder.Entity<OrderHistoryEntry>()
+            .HasIndex(entry => new { entry.OrderId, entry.CreatedAt, entry.Id });
+        modelBuilder.Entity<OrderHistoryEntry>()
+            .HasOne(entry => entry.Order)
+            .WithMany(order => order.History)
+            .HasForeignKey(entry => entry.OrderId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<ProductVariant>()
             .HasIndex(v => v.Sku)

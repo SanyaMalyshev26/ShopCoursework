@@ -62,6 +62,7 @@ public class OrdersAdminController : Controller
         var orders = await query
             .Include(order => order.User)
             .Include(order => order.Items)
+            .Include(order => order.History.OrderBy(entry => entry.CreatedAt).ThenBy(entry => entry.Id))
             .OrderByDescending(order => order.CreatedAt)
             .ThenByDescending(order => order.Id)
             .Skip((page - 1) * PageSize)
@@ -94,6 +95,7 @@ public class OrdersAdminController : Controller
     [HttpPost("{id:int}/MarkPaid")]
     public async Task<IActionResult> MarkPaid(int id)
     {
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         var updated = await _db.Orders
             .Where(order =>
                 order.Id == id &&
@@ -104,7 +106,24 @@ public class OrdersAdminController : Controller
                 updates.SetProperty(order => order.PaymentStatus, PaymentStatuses.Paid));
 
         if (updated != 1)
+        {
+            await transaction.RollbackAsync();
             return await ReportFailedTransition(id);
+        }
+
+        var orderStatus = await _db.Orders
+            .Where(order => order.Id == id)
+            .Select(order => order.Status)
+            .SingleAsync();
+        _db.OrderHistory.Add(new OrderHistoryEntry
+        {
+            OrderId = id,
+            EventType = OrderHistoryEventTypes.PaymentReceived,
+            Status = orderStatus,
+            PaymentStatus = PaymentStatuses.Paid
+        });
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         TempData["Message"] = $"Для заказа #{id} отмечено получение оплаты.";
         return RedirectToAction(nameof(Index));
@@ -125,12 +144,30 @@ public class OrdersAdminController : Controller
 
     private async Task<IActionResult> ChangeStatus(int id, string currentStatus, string nextStatus)
     {
+        await using var transaction = await _db.Database.BeginTransactionAsync();
         var updated = await _db.Orders
             .Where(order => order.Id == id && order.Status == currentStatus)
             .ExecuteUpdateAsync(updates => updates.SetProperty(order => order.Status, nextStatus));
 
         if (updated != 1)
+        {
+            await transaction.RollbackAsync();
             return await ReportFailedTransition(id);
+        }
+
+        var paymentStatus = await _db.Orders
+            .Where(order => order.Id == id)
+            .Select(order => order.PaymentStatus)
+            .SingleAsync();
+        _db.OrderHistory.Add(new OrderHistoryEntry
+        {
+            OrderId = id,
+            EventType = OrderHistoryEventTypes.StatusChanged,
+            Status = nextStatus,
+            PaymentStatus = paymentStatus
+        });
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         TempData["Message"] = $"Заказ #{id}: статус изменён на «{nextStatus}».";
         return RedirectToAction(nameof(Index));

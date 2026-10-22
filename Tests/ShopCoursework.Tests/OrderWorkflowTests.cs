@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -247,6 +249,46 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(
             """{"status":"ok"}""",
             await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Order_history_migration_backfills_existing_orders_with_current_state()
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        int orderId;
+        await using (var db = new ApplicationDbContext(options))
+        {
+            await db.GetService<IMigrator>().MigrateAsync("20261022122521_AddStockNotifications");
+            db.Users.Add(new ApplicationUser
+            {
+                Id = "history-migration-user",
+                UserName = "history-migration@example.invalid",
+                NormalizedUserName = "HISTORY-MIGRATION@EXAMPLE.INVALID",
+                Email = "history-migration@example.invalid",
+                NormalizedEmail = "HISTORY-MIGRATION@EXAMPLE.INVALID"
+            });
+            var order = new Order
+            {
+                UserId = "history-migration-user",
+                Status = OrderStatuses.Confirmed,
+                PaymentStatus = PaymentStatuses.Pending
+            };
+            db.Orders.Add(order);
+            await db.SaveChangesAsync();
+            orderId = order.Id;
+
+            await db.Database.MigrateAsync();
+            var history = await db.OrderHistory.SingleAsync(entry => entry.OrderId == orderId);
+            Assert.Equal(OrderHistoryEventTypes.ExistingState, history.EventType);
+            Assert.Equal(OrderStatuses.Confirmed, history.Status);
+            Assert.Equal(PaymentStatuses.Pending, history.PaymentStatus);
+            Assert.NotEqual(default, history.CreatedAt);
+        }
     }
 
     [Fact]
@@ -882,6 +924,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         var variant = await db.ProductVariants.AsNoTracking().SingleAsync(item => item.Id == variantId);
         var order = await db.Orders
             .Include(item => item.Items)
+            .Include(item => item.History)
             .AsNoTracking()
             .SingleAsync();
         var line = Assert.Single(order.Items);
@@ -899,6 +942,10 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal("Чёрный", line.VariantColor);
         Assert.Equal(2, line.Quantity);
         Assert.Equal(7000m, order.Total);
+        var creationEvent = Assert.Single(order.History);
+        Assert.Equal(OrderHistoryEventTypes.Created, creationEvent.EventType);
+        Assert.Equal(OrderStatuses.New, creationEvent.Status);
+        Assert.Equal(PaymentStatuses.Pending, creationEvent.PaymentStatus);
     }
 
     [Fact]
@@ -1117,6 +1164,18 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
         Assert.Equal(OrderStatuses.Cancelled, await GetOrderStatusAsync(orderId));
         Assert.Equal(4, await GetStockAsync(variantId));
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var history = await db.OrderHistory
+                .Where(entry => entry.OrderId == orderId)
+                .OrderBy(entry => entry.Id)
+                .ToListAsync();
+            Assert.Equal(
+                new[] { OrderHistoryEventTypes.Created, OrderHistoryEventTypes.CustomerCancelled },
+                history.Select(entry => entry.EventType));
+            Assert.Equal(OrderStatuses.Cancelled, history[^1].Status);
+        }
 
         var repeatCancel = await PostFormAsync($"/Account/CancelOrder/{orderId}");
         Assert.Equal(HttpStatusCode.OK, repeatCancel.StatusCode);
@@ -1264,6 +1323,7 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         var accountHtml = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index"));
         Assert.Contains($"{OrderStatuses.Delivered}</span>", accountHtml);
         Assert.Contains($"{PaymentMethods.CashOnDelivery} · {PaymentStatuses.Paid}", accountHtml);
+        Assert.Contains(OrderHistoryEventTypes.PaymentReceived, accountHtml);
 
         var repeatedPayment = await PostFormAsync($"/Admin/Orders/{orderId}/MarkPaid");
         Assert.Equal(HttpStatusCode.OK, repeatedPayment.StatusCode);
@@ -1273,6 +1333,27 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, invalidCancel.StatusCode);
         Assert.Equal(3, await GetStockAsync(variantId));
         Assert.Equal(OrderStatuses.Delivered, await GetOrderStatusAsync(orderId));
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var history = await db.OrderHistory
+                .Where(entry => entry.OrderId == orderId)
+                .OrderBy(entry => entry.Id)
+                .ToListAsync();
+            Assert.Equal(
+                new[]
+                {
+                    OrderHistoryEventTypes.Created,
+                    OrderHistoryEventTypes.StatusChanged,
+                    OrderHistoryEventTypes.StatusChanged,
+                    OrderHistoryEventTypes.StatusChanged,
+                    OrderHistoryEventTypes.PaymentReceived
+                },
+                history.Select(entry => entry.EventType));
+            Assert.Equal(OrderStatuses.Delivered, history[^1].Status);
+            Assert.Equal(PaymentStatuses.Paid, history[^1].PaymentStatus);
+        }
+        Assert.Contains(OrderHistoryEventTypes.StatusChanged, adminHtml);
 
         var secondVariantId = await CreateVariantAsync(stock: 5);
         var secondCheckout = await CheckoutAsync(secondVariantId, quantity: 2);
@@ -1288,6 +1369,17 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, repeatCancel.StatusCode);
         Assert.Equal(OrderStatuses.Cancelled, await GetOrderStatusAsync(cancellableOrderId));
         Assert.Equal(5, await GetStockAsync(secondVariantId));
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var history = await db.OrderHistory
+                .Where(entry => entry.OrderId == cancellableOrderId)
+                .OrderBy(entry => entry.Id)
+                .ToListAsync();
+            Assert.Equal(
+                new[] { OrderHistoryEventTypes.Created, OrderHistoryEventTypes.AdminCancelled },
+                history.Select(entry => entry.EventType));
+        }
     }
 
     private async Task<int> CreateVariantAsync(int stock, string size = "M")

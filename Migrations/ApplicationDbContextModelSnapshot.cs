@@ -301,6 +301,40 @@ namespace ShopCoursework.Migrations
                     b.ToTable("Orders");
                 });
 
+            modelBuilder.Entity("ShopCoursework.Models.OrderHistoryEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PaymentStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId", "CreatedAt", "Id");
+
+                    b.ToTable("OrderHistory");
+                });
+
             modelBuilder.Entity("ShopCoursework.Models.OrderItem", b =>
                 {
                     b.Property<int>("Id")
@@ -598,6 +632,17 @@ namespace ShopCoursework.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ShopCoursework.Models.OrderHistoryEntry", b =>
+                {
+                    b.HasOne("ShopCoursework.Models.Order", "Order")
+                        .WithMany("History")
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
             modelBuilder.Entity("ShopCoursework.Models.OrderItem", b =>
                 {
                     b.HasOne("ShopCoursework.Models.Order", "Order")
@@ -667,6 +712,8 @@ namespace ShopCoursework.Migrations
 
             modelBuilder.Entity("ShopCoursework.Models.Order", b =>
                 {
+                    b.Navigation("History");
+
                     b.Navigation("Items");
                 });
 
