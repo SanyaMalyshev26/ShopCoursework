@@ -570,6 +570,45 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Admin_orders_csv_exports_filtered_orders_safely()
+    {
+        var variantId = await CreateVariantAsync(stock: 3);
+        var confirmedOrderId = await CreateOrderAsync(variantId, quantity: 1);
+        var newOrderId = await CreateOrderAsync(variantId, quantity: 1);
+        const string formulaName = "  =HYPERLINK(\"https://example.invalid\",\"Click\")";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var order = await db.Orders
+                .Include(item => item.Items)
+                .SingleAsync(item => item.Id == confirmedOrderId);
+            order.Status = OrderStatuses.Confirmed;
+            order.PaymentStatus = PaymentStatuses.Paid;
+            order.Items.Single().ProductName = formulaName;
+            await db.SaveChangesAsync();
+        }
+
+        var status = Uri.EscapeDataString(OrderStatuses.Confirmed);
+        var paymentStatus = Uri.EscapeDataString(PaymentStatuses.Paid);
+        var response = await _client.GetAsync(
+            $"/Admin/Orders/Csv?status={status}&paymentStatus={paymentStatus}&search={confirmedOrderId}");
+        var csv = Encoding.UTF8.GetString(await response.Content.ReadAsByteArrayAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("utf-8", response.Content.Headers.ContentType?.CharSet);
+        Assert.StartsWith("\uFEFF", csv);
+        Assert.Contains("\"Заказ\",\"Дата UTC\",\"Email\",\"Покупатель\",\"Статус\"", csv);
+        Assert.Contains($"\"{confirmedOrderId}\"", csv);
+        Assert.Contains("'  =HYPERLINK(\"\"https://example.invalid\"\",\"\"Click\"\")", csv);
+        Assert.DoesNotContain($"\"{newOrderId}\"", csv);
+
+        var invalidFilter = await _client.GetAsync("/Admin/Orders/Csv?status=Unknown");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidFilter.StatusCode);
+    }
+
+    [Fact]
     public async Task Admin_orders_are_paginated_and_keep_filters_between_pages()
     {
         var variantId = await CreateVariantAsync(stock: 12);

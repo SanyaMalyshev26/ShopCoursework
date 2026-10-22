@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
+using ShopCoursework.Services.Csv;
 using ShopCoursework.Services;
 
 namespace ShopCoursework.Controllers;
@@ -40,21 +41,7 @@ public class OrdersAdminController : Controller
             return BadRequest();
         }
 
-        var query = _db.Orders.AsNoTracking().AsQueryable();
-        if (!string.IsNullOrEmpty(status))
-            query = query.Where(order => order.Status == status);
-        if (!string.IsNullOrEmpty(paymentStatus))
-            query = query.Where(order => order.PaymentStatus == paymentStatus);
-        if (!string.IsNullOrEmpty(search))
-        {
-            if (int.TryParse(search, out var orderId))
-                query = query.Where(order =>
-                    order.Id == orderId ||
-                    (order.User != null && order.User.Email != null && order.User.Email.Contains(search)));
-            else
-                query = query.Where(order =>
-                    order.User != null && order.User.Email != null && order.User.Email.Contains(search));
-        }
+        var query = FilterOrders(_db.Orders.AsNoTracking(), status, paymentStatus, search);
 
         var totalCount = await query.CountAsync();
         var totalPages = (int)Math.Ceiling(totalCount / (double)PageSize);
@@ -78,6 +65,71 @@ public class OrdersAdminController : Controller
             Page = page,
             TotalPages = totalPages
         });
+    }
+
+    [HttpGet("Csv")]
+    public async Task<IActionResult> Csv(
+        string? status,
+        string? paymentStatus,
+        string? search,
+        CancellationToken cancellationToken)
+    {
+        status = status?.Trim();
+        paymentStatus = paymentStatus?.Trim();
+        search = search?.Trim();
+        if ((!string.IsNullOrEmpty(status) && !AdminOrdersViewModel.StatusOptions.Contains(status)) ||
+            (!string.IsNullOrEmpty(paymentStatus) &&
+             !AdminOrdersViewModel.PaymentStatusOptions.Contains(paymentStatus)) ||
+            search?.Length > 120)
+        {
+            return BadRequest();
+        }
+
+        var orders = await FilterOrders(
+                _db.Orders.AsNoTracking(),
+                status,
+                paymentStatus,
+                search)
+            .Include(order => order.User)
+            .Include(order => order.Items)
+            .OrderByDescending(order => order.CreatedAt)
+            .ThenByDescending(order => order.Id)
+            .ToListAsync(cancellationToken);
+
+        var rows = new List<string>
+        {
+            CsvExport.Row(
+                "Заказ",
+                "Дата UTC",
+                "Email",
+                "Покупатель",
+                "Статус",
+                "Статус оплаты",
+                "Способ оплаты",
+                "Сумма",
+                "Адрес доставки",
+                "Состав")
+        };
+        rows.AddRange(orders.Select(order => CsvExport.Row(
+            order.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            order.CreatedAt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            order.User?.Email ?? "",
+            $"{order.User?.FirstName} {order.User?.LastName}".Trim(),
+            order.Status,
+            order.PaymentStatus,
+            order.PaymentMethod,
+            order.Total.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+            string.Join(", ", new[] { order.ShippingAddressTitle, order.ShippingCity, order.ShippingStreet }
+                .Where(value => !string.IsNullOrWhiteSpace(value))),
+            string.Join("; ", order.Items.Select(item =>
+                $"{item.ProductName ?? item.Product?.Name ?? "Товар удалён"} " +
+                $"{item.VariantSku} {item.VariantSize} {item.VariantColor} × {item.Quantity}")))));
+
+        var csv = string.Join("\r\n", rows) + "\r\n";
+        return File(
+            new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetBytes(csv),
+            "text/csv; charset=utf-8",
+            $"orders-{DateTime.UtcNow:yyyy-MM-dd}.csv");
     }
 
     [HttpPost("{id:int}/Confirm")]
@@ -180,5 +232,29 @@ public class OrdersAdminController : Controller
 
         TempData["Error"] = $"Статус заказа #{id} уже изменился или этот переход недопустим.";
         return RedirectToAction(nameof(Index));
+    }
+
+    private static IQueryable<Order> FilterOrders(
+        IQueryable<Order> query,
+        string? status,
+        string? paymentStatus,
+        string? search)
+    {
+        if (!string.IsNullOrEmpty(status))
+            query = query.Where(order => order.Status == status);
+        if (!string.IsNullOrEmpty(paymentStatus))
+            query = query.Where(order => order.PaymentStatus == paymentStatus);
+        if (!string.IsNullOrEmpty(search))
+        {
+            if (int.TryParse(search, out var orderId))
+                query = query.Where(order =>
+                    order.Id == orderId ||
+                    (order.User != null && order.User.Email != null && order.User.Email.Contains(search)));
+            else
+                query = query.Where(order =>
+                    order.User != null && order.User.Email != null && order.User.Email.Contains(search));
+        }
+
+        return query;
     }
 }
