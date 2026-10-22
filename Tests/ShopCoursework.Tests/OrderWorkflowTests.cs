@@ -280,6 +280,50 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Admin_inventory_csv_exports_active_low_stock_variants_safely()
+    {
+        var lowStockVariantId = await CreateVariantAsync(stock: 2, size: "M");
+        var outOfStockVariantId = await CreateVariantAsync(stock: 0, size: "S");
+        var healthyVariantId = await CreateVariantAsync(stock: 4, size: "L");
+        var inactiveVariantId = await CreateVariantAsync(stock: 1, size: "XL");
+        string lowStockSku;
+        string outOfStockSku;
+        string healthySku;
+        string inactiveSku;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var product = await db.Products.SingleAsync(item => item.Id == 1);
+            product.Name = "  =HYPERLINK(\"https://example.invalid\",\"Click\")";
+            var inactiveVariant = await db.ProductVariants.SingleAsync(item => item.Id == inactiveVariantId);
+            inactiveVariant.IsActive = false;
+            await db.SaveChangesAsync();
+
+            lowStockSku = await db.ProductVariants.Where(item => item.Id == lowStockVariantId)
+                .Select(item => item.Sku).SingleAsync();
+            outOfStockSku = await db.ProductVariants.Where(item => item.Id == outOfStockVariantId)
+                .Select(item => item.Sku).SingleAsync();
+            healthySku = await db.ProductVariants.Where(item => item.Id == healthyVariantId)
+                .Select(item => item.Sku).SingleAsync();
+            inactiveSku = inactiveVariant.Sku;
+        }
+
+        var response = await _client.GetAsync("/Admin/Products/Inventory/Csv");
+        var csv = Encoding.UTF8.GetString(await response.Content.ReadAsByteArrayAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("utf-8", response.Content.Headers.ContentType?.CharSet);
+        Assert.StartsWith("\uFEFF", csv);
+        Assert.Contains("\"ID товара\",\"Товар\",\"SKU\",\"Размер\",\"Цвет\",\"Остаток\",\"Порог\"", csv);
+        Assert.Contains($"\"1\",\"'  =HYPERLINK(\"\"https://example.invalid\"\",\"\"Click\"\")\",\"{outOfStockSku}\",\"S\",\"Чёрный\",\"0\",\"3\"", csv);
+        Assert.Contains($"\"1\",\"'  =HYPERLINK(\"\"https://example.invalid\"\",\"\"Click\"\")\",\"{lowStockSku}\",\"M\",\"Чёрный\",\"2\",\"3\"", csv);
+        Assert.DoesNotContain(healthySku, csv);
+        Assert.DoesNotContain(inactiveSku, csv);
+    }
+
+    [Fact]
     public async Task Readiness_endpoint_reports_database_availability()
     {
         var response = await _client.GetAsync("/health/ready");

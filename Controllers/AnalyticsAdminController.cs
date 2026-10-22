@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
 using ShopCoursework.Services.Analytics;
+using ShopCoursework.Services.Csv;
 
 namespace ShopCoursework.Controllers;
 
@@ -248,8 +249,8 @@ public class AnalyticsAdminController : Controller
     {
         var rows = new List<string>
         {
-            CsvRow("Тип", "Дата", "Название", "Заказов", "Выручка", "Оплачено", "Единиц", "ID товара", "Валюта"),
-            CsvRow(
+            CsvExport.Row("Тип", "Дата", "Название", "Заказов", "Выручка", "Оплачено", "Единиц", "ID товара", "Валюта"),
+            CsvExport.Row(
                 "Итог",
                 "",
                 "",
@@ -261,7 +262,7 @@ public class AnalyticsAdminController : Controller
                 report.CurrencyCode)
         };
 
-        rows.AddRange(report.Daily.Select(day => CsvRow(
+        rows.AddRange(report.Daily.Select(day => CsvExport.Row(
             "День",
             day.Date,
             "",
@@ -271,7 +272,7 @@ public class AnalyticsAdminController : Controller
             day.UnitsSold.ToString(CultureInfo.InvariantCulture),
             "",
             report.CurrencyCode)));
-        rows.AddRange(report.TopProducts.Select(product => CsvRow(
+        rows.AddRange(report.TopProducts.Select(product => CsvExport.Row(
             "Товар",
             "",
             product.ProductName,
@@ -283,18 +284,6 @@ public class AnalyticsAdminController : Controller
             report.CurrencyCode)));
 
         return string.Join("\r\n", rows) + "\r\n";
-    }
-
-    private static string CsvRow(params string[] values) =>
-        string.Join(",", values.Select(EscapeCsvField));
-
-    private static string EscapeCsvField(string value)
-    {
-        var firstNonWhitespace = value.FirstOrDefault(character => !char.IsWhiteSpace(character));
-        if (firstNonWhitespace is '=' or '+' or '-' or '@')
-            value = "'" + value;
-
-        return "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     }
 
     private static bool TryParsePeriod(

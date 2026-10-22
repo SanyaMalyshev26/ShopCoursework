@@ -5,6 +5,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
+using ShopCoursework.Services.Csv;
 using ShopCoursework.Services.Images;
 using ShopCoursework.Services.StockNotifications;
 
@@ -52,6 +53,46 @@ public class ProductsAdminController : Controller
             _lowStockThreshold,
             activeVariants.Count(variant => variant.Stock > 0 && variant.Stock <= _lowStockThreshold),
             activeVariants.Count(variant => variant.Stock == 0)));
+    }
+
+    [HttpGet("Inventory/Csv")]
+    public async Task<IActionResult> InventoryCsv(CancellationToken cancellationToken)
+    {
+        var rows = await _db.ProductVariants
+            .AsNoTracking()
+            .Where(variant => variant.IsActive && variant.Stock <= _lowStockThreshold)
+            .OrderBy(variant => variant.Stock)
+            .ThenBy(variant => variant.Product!.Name)
+            .ThenBy(variant => variant.Sku)
+            .Select(variant => new
+            {
+                variant.ProductId,
+                ProductName = variant.Product!.Name,
+                variant.Sku,
+                variant.Size,
+                variant.Color,
+                variant.Stock
+            })
+            .ToListAsync(cancellationToken);
+
+        var csvRows = new List<string>
+        {
+            CsvExport.Row("ID товара", "Товар", "SKU", "Размер", "Цвет", "Остаток", "Порог")
+        };
+        csvRows.AddRange(rows.Select(variant => CsvExport.Row(
+            variant.ProductId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            variant.ProductName,
+            variant.Sku,
+            variant.Size,
+            variant.Color,
+            variant.Stock.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            _lowStockThreshold.ToString(System.Globalization.CultureInfo.InvariantCulture))));
+
+        var csv = string.Join("\r\n", csvRows) + "\r\n";
+        return File(
+            new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetBytes(csv),
+            "text/csv; charset=utf-8",
+            $"inventory-restock-{DateTime.UtcNow:yyyy-MM-dd}.csv");
     }
 
     [HttpPost("Images")]

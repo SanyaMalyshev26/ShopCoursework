@@ -6,9 +6,12 @@
 }
 
 <main class="container my-5">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <h2 class="mb-0">Товары</h2>
-        <a href="/Admin/Products/Create" class="btn btn-primary">+ Добавить товар</a>
+        <div class="d-flex gap-2">
+            <a href="/Admin/Products/Inventory/Csv" class="btn btn-outline-secondary">Скачать список пополнения</a>
+            <a href="/Admin/Products/Create" class="btn btn-primary">+ Добавить товар</a>
+        </div>
     </div>
 
     @if (TempData["Message"] != null)
