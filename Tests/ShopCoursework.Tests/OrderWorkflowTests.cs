@@ -397,6 +397,172 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Customer_can_subscribe_and_receive_one_account_notification_when_size_is_restocked()
+    {
+        var variantId = await CreateVariantAsync(stock: 0, size: "M");
+        await CreateSizeGuideAsync("M", 90, 100, 70, 80, 90, 100);
+
+        var productPage = WebUtility.HtmlDecode(await _client.GetStringAsync("/Products/1"));
+        Assert.Contains("Сообщить о размере M", productPage);
+        var subscribe = await PostFormAsync(
+            "/Products/1/StockNotifications",
+            new Dictionary<string, string> { ["size"] = " m " });
+        Assert.Equal(HttpStatusCode.OK, subscribe.StatusCode);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var notification = await db.StockNotifications.SingleAsync();
+            Assert.Equal(TestUserId, notification.UserId);
+            Assert.Equal("M", notification.Size);
+            Assert.Null(notification.NotifiedAt);
+        }
+
+        var duplicate = await PostFormAsync(
+            "/Products/1/StockNotifications",
+            new Dictionary<string, string> { ["size"] = "M" });
+        Assert.Equal(HttpStatusCode.OK, duplicate.StatusCode);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert.Single(await db.StockNotifications.ToListAsync());
+        }
+
+        var accountBeforeRestock = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index#stock-notifications"));
+        Assert.Contains("Ожидаем поступления", accountBeforeRestock);
+
+        var restock = await PostFormAsync(
+            $"/Admin/Products/1/Variants/{variantId}/Update",
+            new Dictionary<string, string> { ["stock"] = "4", ["isActive"] = "true" });
+        Assert.Equal(HttpStatusCode.OK, restock.StatusCode);
+        DateTime notifiedAt;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            notifiedAt = (await db.StockNotifications.SingleAsync()).NotifiedAt!.Value;
+        }
+
+        Assert.True(notifiedAt.Kind is DateTimeKind.Utc or DateTimeKind.Unspecified);
+        var accountAfterRestock = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index#stock-notifications"));
+        Assert.Contains("Поступление было", accountAfterRestock);
+        Assert.Contains("Сейчас в наличии: 4 шт.", accountAfterRestock);
+
+        var sellOut = await PostFormAsync(
+            $"/Admin/Products/1/Variants/{variantId}/Update",
+            new Dictionary<string, string> { ["stock"] = "0", ["isActive"] = "true" });
+        Assert.Equal(HttpStatusCode.OK, sellOut.StatusCode);
+        var accountAfterSellOut = WebUtility.HtmlDecode(await _client.GetStringAsync("/Account/Index#stock-notifications"));
+        Assert.Contains("Сейчас размер снова закончился", accountAfterSellOut);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            Assert.Equal(notifiedAt, (await db.StockNotifications.SingleAsync()).NotifiedAt);
+        }
+
+        var remove = await PostFormAsync(
+            "/Account/DeleteStockNotification",
+            new Dictionary<string, string> { ["id"] = "1" });
+        Assert.Equal(HttpStatusCode.OK, remove.StatusCode);
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await verifyDb.StockNotifications.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Stock_notification_requires_login_and_only_owner_can_remove_subscription()
+    {
+        await CreateVariantAsync(stock: 0, size: "M");
+        await CreateSizeGuideAsync("M", 90, 100, 70, 80, 90, 100);
+        await CreateUserAsync("another-stock-notification-user");
+        var otherSubscriptionId = await CreateStockNotificationAsync("another-stock-notification-user");
+
+        await using var anonymousFactory = new TestApplicationFactory(
+            $"Data Source={_databasePath}",
+            isAdmin: false,
+            isAuthenticated: false);
+        using var anonymousClient = anonymousFactory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            HandleCookies = true
+        });
+        var cartHtml = await anonymousClient.GetStringAsync("/Cart");
+        var tokenMatch = Regex.Match(
+            cartHtml,
+            """<input(?=[^>]*name="__RequestVerificationToken")(?=[^>]*value="([^"]+)")[^>]*>""");
+        Assert.True(tokenMatch.Success);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/Products/1/StockNotifications")
+        {
+            Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["size"] = "M",
+                ["__RequestVerificationToken"] = WebUtility.HtmlDecode(tokenMatch.Groups[1].Value)
+            })
+        };
+        var anonymousResponse = await anonymousClient.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousResponse.StatusCode);
+
+        var removeOtherUsersSubscription = await PostFormAsync(
+            "/Account/DeleteStockNotification",
+            new Dictionary<string, string> { ["id"] = otherSubscriptionId.ToString() });
+        Assert.Equal(HttpStatusCode.OK, removeOtherUsersSubscription.StatusCode);
+
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var subscription = await verifyDb.StockNotifications.SingleAsync();
+        Assert.Equal("another-stock-notification-user", subscription.UserId);
+    }
+
+    [Fact]
+    public async Task Customer_cannot_subscribe_to_unknown_size_or_currently_available_size()
+    {
+        var variantId = await CreateVariantAsync(stock: 2, size: "M");
+        await CreateSizeGuideAsync("M", 90, 100, 70, 80, 90, 100);
+
+        var available = await PostFormAsync(
+            "/Products/1/StockNotifications",
+            new Dictionary<string, string> { ["size"] = "M" });
+        var unknown = await PostFormAsync(
+            "/Products/1/StockNotifications",
+            new Dictionary<string, string> { ["size"] = "XL" });
+        Assert.Equal(HttpStatusCode.OK, available.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Empty(await db.StockNotifications.ToListAsync());
+        Assert.Equal(2, await GetStockAsync(variantId));
+    }
+
+    [Fact]
+    public async Task Adding_a_new_in_stock_variant_notifies_existing_size_subscribers()
+    {
+        await CreateSizeGuideAsync("XL", 105, 115, 85, 95, 105, 115);
+        var subscribe = await PostFormAsync(
+            "/Products/1/StockNotifications",
+            new Dictionary<string, string> { ["size"] = "XL" });
+        Assert.Equal(HttpStatusCode.OK, subscribe.StatusCode);
+
+        var addVariant = await PostFormAsync(
+            "/Admin/Products/1/Variants",
+            new Dictionary<string, string>
+            {
+                ["Sku"] = "NOTIFY-NEW-STOCK-XL",
+                ["Size"] = "XL",
+                ["Color"] = "Синий",
+                ["Stock"] = "2"
+            });
+        Assert.Equal(HttpStatusCode.OK, addVariant.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var notification = await db.StockNotifications.SingleAsync();
+        Assert.NotNull(notification.NotifiedAt);
+        Assert.Equal(2, await db.ProductVariants
+            .Where(variant => variant.ProductId == 1 && variant.Size == "XL")
+            .SumAsync(variant => variant.Stock));
+    }
+
+    [Fact]
     public async Task Sales_report_requires_admin_role()
     {
         await using var nonAdminFactory = new TestApplicationFactory($"Data Source={_databasePath}", isAdmin: false);
@@ -1033,6 +1199,36 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
         db.Addresses.Add(address);
         await db.SaveChangesAsync();
         return address.Id;
+    }
+
+    private async Task CreateUserAsync(string userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<ApplicationUser>>();
+        var result = await userManager.CreateAsync(new ApplicationUser
+        {
+            Id = userId,
+            UserName = $"{userId}@example.invalid",
+            Email = $"{userId}@example.invalid",
+            FirstName = "Other",
+            LastName = "User"
+        }, "TestPass123");
+        Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(error => error.Description)));
+    }
+
+    private async Task<int> CreateStockNotificationAsync(string userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var notification = new StockNotification
+        {
+            UserId = userId,
+            ProductId = 1,
+            Size = "M"
+        };
+        db.StockNotifications.Add(notification);
+        await db.SaveChangesAsync();
+        return notification.Id;
     }
 
     private Task<HttpResponseMessage> CheckoutAsync(

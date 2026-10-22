@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
 using ShopCoursework.Services.Images;
+using ShopCoursework.Services.StockNotifications;
 
 namespace ShopCoursework.Controllers;
 
@@ -15,15 +16,18 @@ public class ProductsAdminController : Controller
 {
     private readonly ApplicationDbContext _db;
     private readonly IImageProcessingClient _imageProcessingClient;
+    private readonly StockNotificationService _stockNotificationService;
     private readonly ILogger<ProductsAdminController> _logger;
 
     public ProductsAdminController(
         ApplicationDbContext db,
         IImageProcessingClient imageProcessingClient,
+        StockNotificationService stockNotificationService,
         ILogger<ProductsAdminController> logger)
     {
         _db = db;
         _imageProcessingClient = imageProcessingClient;
+        _stockNotificationService = stockNotificationService;
         _logger = logger;
     }
 
@@ -304,7 +308,7 @@ public class ProductsAdminController : Controller
             return RedirectToAction(nameof(Variants), new { id });
         }
 
-        _db.ProductVariants.Add(new ProductVariant
+        var variant = new ProductVariant
         {
             ProductId = id,
             Sku = input.Sku,
@@ -312,11 +316,15 @@ public class ProductsAdminController : Controller
             Color = input.Color,
             Stock = input.Stock,
             IsActive = true
-        });
+        };
 
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+        _db.ProductVariants.Add(variant);
         try
         {
             await _db.SaveChangesAsync();
+            await _stockNotificationService.NotifyAvailableSizeAsync(id, variant.Size);
+            await transaction.CommitAsync();
         }
         catch (DbUpdateException exception) when (
             exception.GetBaseException() is SqliteException { SqliteExtendedErrorCode: 2067 })
@@ -330,7 +338,12 @@ public class ProductsAdminController : Controller
     }
 
     [HttpPost("{id:int}/Variants/{variantId:int}/Update")]
-    public async Task<IActionResult> UpdateVariant(int id, int variantId, int stock, bool isActive)
+    public async Task<IActionResult> UpdateVariant(
+        int id,
+        int variantId,
+        int stock,
+        bool isActive,
+        CancellationToken cancellationToken)
     {
         var variant = await _db.ProductVariants
             .SingleOrDefaultAsync(item => item.Id == variantId && item.ProductId == id);
@@ -341,9 +354,12 @@ public class ProductsAdminController : Controller
             return RedirectToAction(nameof(Variants), new { id });
         }
 
+        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
         variant.Stock = stock;
         variant.IsActive = isActive;
-        await _db.SaveChangesAsync();
+        await _db.SaveChangesAsync(cancellationToken);
+        await _stockNotificationService.NotifyAvailableSizeAsync(id, variant.Size, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         TempData["Message"] = "Остаток обновлён";
         return RedirectToAction(nameof(Variants), new { id });

@@ -1,8 +1,11 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using ShopCoursework.Data;
 using ShopCoursework.Models;
+using ShopCoursework.Services.StockNotifications;
 
 namespace ShopCoursework.Controllers;
 
@@ -11,10 +14,14 @@ namespace ShopCoursework.Controllers;
 public class ProductsController : Controller
 {
     private readonly ApplicationDbContext _db;
+    private readonly StockNotificationService _stockNotificationService;
 
-    public ProductsController(ApplicationDbContext db)
+    public ProductsController(
+        ApplicationDbContext db,
+        StockNotificationService stockNotificationService)
     {
         _db = db;
+        _stockNotificationService = stockNotificationService;
     }
 
     [HttpGet("{productId:int}")]
@@ -29,6 +36,91 @@ public class ProductsController : Controller
             return NotFound();
 
         return View(product);
+    }
+
+    [Authorize]
+    [HttpPost("{productId:int}/StockNotifications")]
+    public async Task<IActionResult> SubscribeToStock(
+        int productId,
+        string? size,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var normalizedSize = size?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedSize) || normalizedSize.Length > 32)
+        {
+            TempData["Error"] = "Выберите размер.";
+            return RedirectToAction(nameof(Details), new { productId });
+        }
+
+        var productExists = await _db.Products
+            .AsNoTracking()
+            .AnyAsync(product => product.Id == productId, cancellationToken);
+        if (!productExists)
+            return NotFound();
+
+        var hasSizeGuide = await _db.ProductSizeGuides
+            .AnyAsync(guide =>
+                guide.ProductId == productId &&
+                guide.Size.ToUpper() == normalizedSize,
+                cancellationToken);
+        if (!hasSizeGuide)
+        {
+            TempData["Error"] = "Для выбранного размера нет таблицы мерок.";
+            return RedirectToAction(nameof(Details), new { productId });
+        }
+
+        var availableStock = await _db.ProductVariants
+            .Where(variant =>
+                variant.ProductId == productId &&
+                variant.Size.ToUpper() == normalizedSize &&
+                variant.IsActive &&
+                variant.Stock > 0)
+            .SumAsync(variant => (int?)variant.Stock, cancellationToken) ?? 0;
+        if (availableStock > 0)
+        {
+            TempData["Message"] = $"Размер {normalizedSize} уже есть в наличии.";
+            return RedirectToAction(nameof(Details), new { productId });
+        }
+
+        var existing = await _db.StockNotifications
+            .SingleOrDefaultAsync(notification =>
+                notification.UserId == userId &&
+                notification.ProductId == productId &&
+                notification.Size == normalizedSize,
+                cancellationToken);
+        if (existing != null)
+        {
+            TempData["Message"] = $"Вы уже подписаны на размер {normalizedSize}.";
+            return RedirectToAction(nameof(Details), new { productId });
+        }
+
+        _db.StockNotifications.Add(new StockNotification
+        {
+            UserId = userId,
+            ProductId = productId,
+            Size = normalizedSize
+        });
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+            await _stockNotificationService.NotifyAvailableSizeAsync(
+                productId,
+                normalizedSize,
+                cancellationToken);
+        }
+        catch (DbUpdateException exception) when (
+            exception.GetBaseException() is SqliteException { SqliteExtendedErrorCode: 2067 })
+        {
+            TempData["Message"] = $"Вы уже подписаны на размер {normalizedSize}.";
+            return RedirectToAction(nameof(Details), new { productId });
+        }
+
+        TempData["Message"] = $"Сообщим в личном кабинете, когда размер {normalizedSize} появится.";
+        return RedirectToAction(nameof(Details), new { productId });
     }
 
     [HttpPost("{productId:int}/SizeRecommendation")]

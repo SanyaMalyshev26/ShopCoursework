@@ -14,6 +14,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Product> Products => Set<Product>();
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductSizeGuide> ProductSizeGuides => Set<ProductSizeGuide>();
+    public DbSet<StockNotification> StockNotifications => Set<StockNotification>();
 
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
@@ -76,6 +77,24 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             .HasOne(guide => guide.Product)
             .WithMany(product => product.SizeGuides)
             .HasForeignKey(guide => guide.ProductId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<StockNotification>()
+            .HasIndex(notification => new
+            {
+                notification.UserId,
+                notification.ProductId,
+                notification.Size
+            })
+            .IsUnique();
+        modelBuilder.Entity<StockNotification>()
+            .HasOne(notification => notification.User)
+            .WithMany()
+            .HasForeignKey(notification => notification.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<StockNotification>()
+            .HasOne(notification => notification.Product)
+            .WithMany()
+            .HasForeignKey(notification => notification.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
         modelBuilder.Entity<OrderItem>()
             .HasOne(i => i.ProductVariant)

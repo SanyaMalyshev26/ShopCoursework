@@ -43,6 +43,13 @@ public class AccountController : Controller
             .OrderByDescending(a => a.IsDefault)
             .ThenBy(a => a.Id)
             .ToListAsync();
+        ViewBag.StockNotifications = await _db.StockNotifications
+            .Where(notification => notification.UserId == user!.Id)
+            .Include(notification => notification.Product)
+                .ThenInclude(product => product!.Variants.Where(variant => variant.IsActive))
+            .OrderByDescending(notification => notification.NotifiedAt)
+            .ThenByDescending(notification => notification.CreatedAt)
+            .ToListAsync();
         return View(user);
     }
 
@@ -252,6 +259,26 @@ public class AccountController : Controller
             TempData["Message"] = "Адрес удалён";
         }
         return RedirectToAction("Index");
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> DeleteStockNotification(int id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var notification = await _db.StockNotifications
+            .SingleOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+        if (notification != null)
+        {
+            _db.StockNotifications.Remove(notification);
+            await _db.SaveChangesAsync();
+            TempData["Message"] = "Подписка на поступление удалена.";
+        }
+
+        return Redirect("/Account/Index#stock-notifications");
     }
 
     [Authorize]

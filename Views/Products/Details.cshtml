@@ -12,6 +12,15 @@
         <a href="/#catalog" class="btn btn-link px-0">← Вернуться в каталог</a>
     </nav>
 
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success">@TempData["Message"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">@TempData["Error"]</div>
+    }
+
     <article class="row g-4 g-lg-5 mt-1 product-card">
         <div class="col-md-6">
             <img src="@Model.ImageUrl" class="img-fluid rounded shadow-sm w-100"
@@ -55,10 +64,52 @@
                         data-price="@Model.Price.ToString(CultureInfo.InvariantCulture)">
                     В корзину
                 </button>
+
             }
             else
             {
                 <div class="alert alert-secondary">Варианты товара пока не добавлены.</div>
+            }
+
+            @{
+                var unavailableSizes = Model.SizeGuides
+                    .Where(guide => !Model.Variants.Any(variant =>
+                        variant.IsActive &&
+                        variant.Stock > 0 &&
+                        string.Equals(variant.Size, guide.Size, StringComparison.OrdinalIgnoreCase)))
+                    .OrderBy(guide => guide.Size)
+                    .ToList();
+            }
+            @if (unavailableSizes.Count > 0)
+            {
+                <section class="mt-3">
+                    <h2 class="h6">Нет вашего размера?</h2>
+                    <p class="small text-muted">
+                        Можно подписаться на поступление размера. Уведомление появится в личном кабинете.
+                    </p>
+                    <div class="d-flex flex-wrap gap-2">
+                        @foreach (var guide in unavailableSizes)
+                        {
+                            if (User.Identity?.IsAuthenticated == true)
+                            {
+                                <form method="post" action="/Products/@Model.Id/StockNotifications"
+                                      asp-antiforgery="true">
+                                    <input type="hidden" name="size" value="@guide.Size">
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">
+                                        Сообщить о размере @guide.Size
+                                    </button>
+                                </form>
+                            }
+                            else
+                            {
+                                <a class="btn btn-outline-primary btn-sm"
+                                   href="@Url.Action("Login", "Account", new { returnUrl = $"/Products/{Model.Id}" })">
+                                    Войти и подписаться на @guide.Size
+                                </a>
+                            }
+                        }
+                    </div>
+                </section>
             }
 
             <details class="mt-4">
