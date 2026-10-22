@@ -8,6 +8,7 @@ namespace ShopCoursework.Controllers;
 
 public class HomeController : Controller
 {
+    private const int PageSize = 8;
     private readonly ApplicationDbContext _db;
 
     public HomeController(ApplicationDbContext db)
@@ -19,11 +20,12 @@ public class HomeController : Controller
         string? search,
         string? size,
         bool inStockOnly = false,
-        string sort = "featured")
+        string sort = "featured",
+        int page = 1)
     {
         search = search?.Trim();
         size = size?.Trim();
-        if (search?.Length > 120 || size?.Length > 32 ||
+        if (page < 1 || search?.Length > 120 || size?.Length > 32 ||
             sort is not ("featured" or "price-asc" or "price-desc" or "rating"))
         {
             return BadRequest();
@@ -65,6 +67,12 @@ public class HomeController : Controller
             "rating" => products.OrderByDescending(product => product.Rating).ThenBy(product => product.Id).ToList(),
             _ => products.OrderBy(product => product.Id).ToList()
         };
+        var totalPages = (int)Math.Ceiling(products.Count / (double)PageSize);
+        page = totalPages == 0 ? 1 : Math.Min(page, totalPages);
+        products = products
+            .Skip((page - 1) * PageSize)
+            .Take(PageSize)
+            .ToList();
         var sizes = await _db.ProductVariants
             .AsNoTracking()
             .Where(variant => variant.IsActive)
@@ -80,7 +88,9 @@ public class HomeController : Controller
             Search = search ?? "",
             Size = size ?? "",
             Sort = sort,
-            InStockOnly = inStockOnly
+            InStockOnly = inStockOnly,
+            Page = page,
+            TotalPages = totalPages
         });
     }
 

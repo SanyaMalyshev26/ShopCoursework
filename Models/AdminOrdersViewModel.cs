@@ -6,6 +6,8 @@ public sealed class AdminOrdersViewModel
     public string Status { get; init; } = "";
     public string PaymentStatus { get; init; } = "";
     public string Search { get; init; } = "";
+    public int Page { get; init; }
+    public int TotalPages { get; init; }
 
     public static IReadOnlyList<string> StatusOptions { get; } =
     [

@@ -194,6 +194,51 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Catalog_paginates_after_filters_and_preserves_filters_on_next_page()
+    {
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            for (var index = 0; index < 9; index++)
+            {
+                db.Products.Add(new Product
+                {
+                    Name = $"Pagination-{index:D2}",
+                    Price = 100 + index,
+                    Rating = 4,
+                    ImageUrl = "/test.webp"
+                });
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        var firstPage = WebUtility.HtmlDecode(
+            await _client.GetStringAsync("/?search=Pagination-"));
+        Assert.Contains("Pagination-00", firstPage);
+        Assert.Contains("Pagination-07", firstPage);
+        Assert.DoesNotContain("Pagination-08", firstPage);
+        Assert.Contains("Страница 1 из 2", firstPage);
+
+        var secondPageResponse = await _client.GetAsync("/?search=Pagination-&page=2");
+        var secondPage = WebUtility.HtmlDecode(await secondPageResponse.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, secondPageResponse.StatusCode);
+        Assert.Contains("Pagination-08", secondPage);
+        Assert.DoesNotContain("Pagination-07", secondPage);
+        Assert.Contains("value=\"Pagination-\"", secondPage);
+        Assert.Contains("Страница 2 из 2", secondPage);
+        Assert.Contains("page=2", firstPage);
+
+        var outOfRangePage = WebUtility.HtmlDecode(
+            await _client.GetStringAsync("/?search=Pagination-&page=99"));
+        Assert.Contains("Pagination-08", outOfRangePage);
+        Assert.Contains("Страница 2 из 2", outOfRangePage);
+
+        var invalidPage = await _client.GetAsync("/?page=0");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPage.StatusCode);
+    }
+
+    [Fact]
     public async Task Readiness_endpoint_reports_database_availability()
     {
         var response = await _client.GetAsync("/health/ready");
@@ -319,6 +364,43 @@ public sealed class OrderWorkflowTests : IAsyncLifetime
 
         var invalidFilter = await _client.GetAsync("/Admin/Orders?status=Unknown");
         Assert.Equal(HttpStatusCode.BadRequest, invalidFilter.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_orders_are_paginated_and_keep_filters_between_pages()
+    {
+        var variantId = await CreateVariantAsync(stock: 12);
+        var orderIds = new List<int>();
+        for (var index = 0; index < 11; index++)
+            orderIds.Add(await CreateOrderAsync(variantId, quantity: 1));
+
+        var status = Uri.EscapeDataString(OrderStatuses.New);
+        var payment = Uri.EscapeDataString(PaymentStatuses.Pending);
+        var firstPageResponse = await _client.GetAsync(
+            $"/Admin/Orders?status={status}&paymentStatus={payment}");
+        var firstPage = WebUtility.HtmlDecode(await firstPageResponse.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, firstPageResponse.StatusCode);
+        Assert.Contains("Страница 1 из 2", firstPage);
+        Assert.Contains($"<strong>#{orderIds[^1]}</strong>", firstPage);
+        Assert.DoesNotContain($"<strong>#{orderIds[0]}</strong>", firstPage);
+
+        var secondPageResponse = await _client.GetAsync(
+            $"/Admin/Orders?status={status}&paymentStatus={payment}&page=2");
+        var secondPage = WebUtility.HtmlDecode(await secondPageResponse.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.OK, secondPageResponse.StatusCode);
+        Assert.Contains("Страница 2 из 2", secondPage);
+        Assert.Contains($"<strong>#{orderIds[0]}</strong>", secondPage);
+        Assert.Contains($"value=\"{OrderStatuses.New}\" selected", secondPage);
+        Assert.Contains($"value=\"{PaymentStatuses.Pending}\" selected", secondPage);
+        Assert.Contains("page=2", firstPage);
+
+        var outOfRangePage = WebUtility.HtmlDecode(
+            await _client.GetStringAsync($"/Admin/Orders?status={status}&paymentStatus={payment}&page=99"));
+        Assert.Contains($"<strong>#{orderIds[0]}</strong>", outOfRangePage);
+        Assert.Contains("Страница 2 из 2", outOfRangePage);
+
+        var invalidPage = await _client.GetAsync("/Admin/Orders?page=0");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPage.StatusCode);
     }
 
     [Fact]

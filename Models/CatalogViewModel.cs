@@ -8,4 +8,6 @@ public sealed class CatalogViewModel
     public string Size { get; init; } = "";
     public string Sort { get; init; } = "featured";
     public bool InStockOnly { get; init; }
+    public int Page { get; init; }
+    public int TotalPages { get; init; }
 }

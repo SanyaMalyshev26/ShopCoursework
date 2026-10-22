@@ -161,4 +161,30 @@
             </table>
         </div>
     }
+    @if (Model.TotalPages > 1)
+    {
+        <nav class="mt-4" aria-label="Страницы заказов">
+            <ul class="pagination justify-content-center">
+                <li class="page-item @(Model.Page <= 1 ? "disabled" : "")">
+                    <a class="page-link"
+                       asp-route-status="@Model.Status"
+                       asp-route-paymentStatus="@Model.PaymentStatus"
+                       asp-route-search="@Model.Search"
+                       asp-route-page="@(Model.Page - 1)"
+                       aria-label="Предыдущая страница">Назад</a>
+                </li>
+                <li class="page-item disabled">
+                    <span class="page-link">Страница @Model.Page из @Model.TotalPages</span>
+                </li>
+                <li class="page-item @(Model.Page >= Model.TotalPages ? "disabled" : "")">
+                    <a class="page-link"
+                       asp-route-status="@Model.Status"
+                       asp-route-paymentStatus="@Model.PaymentStatus"
+                       asp-route-search="@Model.Search"
+                       asp-route-page="@(Model.Page + 1)"
+                       aria-label="Следующая страница">Далее</a>
+                </li>
+            </ul>
+        </nav>
+    }
 </main>

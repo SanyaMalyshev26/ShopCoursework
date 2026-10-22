@@ -11,6 +11,7 @@ namespace ShopCoursework.Controllers;
 [Route("Admin/Orders")]
 public class OrdersAdminController : Controller
 {
+    private const int PageSize = 10;
     private readonly ApplicationDbContext _db;
     private readonly OrderCancellationService _orderCancellation;
 
@@ -24,7 +25,8 @@ public class OrdersAdminController : Controller
     public async Task<IActionResult> Index(
         string? status,
         string? paymentStatus,
-        string? search)
+        string? search,
+        int page = 1)
     {
         status = status?.Trim();
         paymentStatus = paymentStatus?.Trim();
@@ -32,7 +34,8 @@ public class OrdersAdminController : Controller
         if ((!string.IsNullOrEmpty(status) && !AdminOrdersViewModel.StatusOptions.Contains(status)) ||
             (!string.IsNullOrEmpty(paymentStatus) &&
              !AdminOrdersViewModel.PaymentStatusOptions.Contains(paymentStatus)) ||
-            search?.Length > 120)
+            search?.Length > 120 ||
+            page < 1)
         {
             return BadRequest();
         }
@@ -53,11 +56,16 @@ public class OrdersAdminController : Controller
                     order.User != null && order.User.Email != null && order.User.Email.Contains(search));
         }
 
+        var totalCount = await query.CountAsync();
+        var totalPages = (int)Math.Ceiling(totalCount / (double)PageSize);
+        page = totalPages == 0 ? 1 : Math.Min(page, totalPages);
         var orders = await query
             .Include(order => order.User)
             .Include(order => order.Items)
             .OrderByDescending(order => order.CreatedAt)
             .ThenByDescending(order => order.Id)
+            .Skip((page - 1) * PageSize)
+            .Take(PageSize)
             .ToListAsync();
 
         return View(new AdminOrdersViewModel
@@ -65,7 +73,9 @@ public class OrdersAdminController : Controller
             Orders = orders,
             Status = status ?? "",
             PaymentStatus = paymentStatus ?? "",
-            Search = search ?? ""
+            Search = search ?? "",
+            Page = page,
+            TotalPages = totalPages
         });
     }
 

@@ -117,6 +117,34 @@
             По выбранным условиям товары не найдены. Измените фильтры или сбросьте их.
         </div>
     }
+    else if (Model.TotalPages > 1)
+    {
+        <nav class="mt-4" aria-label="Страницы каталога">
+            <ul class="pagination justify-content-center">
+                <li class="page-item @(Model.Page <= 1 ? "disabled" : "")">
+                    <a class="page-link"
+                       asp-route-search="@Model.Search"
+                       asp-route-size="@Model.Size"
+                       asp-route-inStockOnly="@(Model.InStockOnly ? "true" : null)"
+                       asp-route-sort="@Model.Sort"
+                       asp-route-page="@(Model.Page - 1)"
+                       aria-label="Предыдущая страница">Назад</a>
+                </li>
+                <li class="page-item disabled">
+                    <span class="page-link">Страница @Model.Page из @Model.TotalPages</span>
+                </li>
+                <li class="page-item @(Model.Page >= Model.TotalPages ? "disabled" : "")">
+                    <a class="page-link"
+                       asp-route-search="@Model.Search"
+                       asp-route-size="@Model.Size"
+                       asp-route-inStockOnly="@(Model.InStockOnly ? "true" : null)"
+                       asp-route-sort="@Model.Sort"
+                       asp-route-page="@(Model.Page + 1)"
+                       aria-label="Следующая страница">Далее</a>
+                </li>
+            </ul>
+        </nav>
+    }
 </section>
 
 @section Scripts {
